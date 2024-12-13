@@ -83,8 +83,6 @@ class DataFrameIOManager(BaseManager):
             return out_dict
 
 
-
-
 class RasterIOManager(BaseManager):
     def _get_raster_and_transform(self, fpath: Path) -> tuple[np.ndarray, Affine]:
         with rio.open(fpath, "r") as ds:
@@ -95,7 +93,7 @@ class RasterIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj: tuple[np.ndarray, Affine]):
         fpath = self._get_path(context)
         fpath.parent.mkdir(exist_ok=True, parents=True)
-        
+
         arr, transform = obj
         with rio.open(
             fpath,
@@ -107,10 +105,9 @@ class RasterIOManager(BaseManager):
             dtype="uint16",
             compress="w",
             crs="ESRI:54009",
-            transform=transform
+            transform=transform,
         ) as ds:
             ds.write(arr, 1)
-
 
     def load_input(self, context: InputContext) -> tuple[np.ndarray, Affine]:
         path = self._get_path(context)
@@ -122,7 +119,7 @@ class RasterIOManager(BaseManager):
             for key, fpath in path.items():
                 out_dict[key] = self._get_raster_and_transform(fpath)
             return out_dict
-        
+
 
 class PresentationIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj: Presentation):

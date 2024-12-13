@@ -31,14 +31,17 @@ def load_built_rasters_factory(year: int):
         mask *= year
 
         return mask, transform
-    
+
     return _op
+
 
 load_built_rasters_ops = {year: load_built_rasters_factory(year) for year in YEARS}
 
 
 @op(out=Out(io_manager_key="raster_manager"))
-def reduce_rasters(rasters: list[np.ndarray], transforms: list[Affine]) -> tuple[np.ndarray, Affine]:
+def reduce_rasters(
+    rasters: list[np.ndarray], transforms: list[Affine]
+) -> tuple[np.ndarray, Affine]:
     arr = np.array(rasters)
     arr = np.nanmin(arr, axis=0)
     arr[np.isnan(arr)] = 0
@@ -47,13 +50,20 @@ def reduce_rasters(rasters: list[np.ndarray], transforms: list[Affine]) -> tuple
 
 
 @op
-def get_total_bounds(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame, agebs_2010: gpd.GeoDataFrame, agebs_2020: gpd.GeoDataFrame) -> list:
-    geoms = np.concatenate([
-        agebs_1990["geometry"].to_numpy(),
-        agebs_2000["geometry"].to_numpy(),
-        agebs_2010["geometry"].to_numpy(),
-        agebs_2020["geometry"].to_numpy()
-    ])
+def get_total_bounds(
+    agebs_1990: gpd.GeoDataFrame,
+    agebs_2000: gpd.GeoDataFrame,
+    agebs_2010: gpd.GeoDataFrame,
+    agebs_2020: gpd.GeoDataFrame,
+) -> list:
+    geoms = np.concatenate(
+        [
+            agebs_1990["geometry"].to_numpy(),
+            agebs_2000["geometry"].to_numpy(),
+            agebs_2010["geometry"].to_numpy(),
+            agebs_2020["geometry"].to_numpy(),
+        ]
+    )
     return [shapely.union_all(geoms)]
 
 
@@ -66,9 +76,14 @@ def get_total_bounds(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame,
         "agebs_2010": AssetIn(key=["agebs", "2010"]),
         "agebs_2020": AssetIn(key=["agebs", "2020"]),
     },
-    partitions_def=zone_partitions
+    partitions_def=zone_partitions,
 )
-def built(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame, agebs_2010: gpd.GeoDataFrame, agebs_2020: gpd.GeoDataFrame) -> None:
+def built(
+    agebs_1990: gpd.GeoDataFrame,
+    agebs_2000: gpd.GeoDataFrame,
+    agebs_2010: gpd.GeoDataFrame,
+    agebs_2020: gpd.GeoDataFrame,
+) -> None:
     bounds = get_total_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
 
     rasters, transforms = [], []
@@ -80,4 +95,3 @@ def built(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame, agebs_2010
 
     out = reduce_rasters(rasters, transforms)
     return out
-    

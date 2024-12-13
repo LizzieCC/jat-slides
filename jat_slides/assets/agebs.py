@@ -16,19 +16,23 @@ def agebs_factory(year: int):
     else:
         assert_never(year)
 
-    @asset(name=str(year), key_prefix="agebs", partitions_def=zone_partitions, io_manager_key="gpkg_manager")
-    def _asset(context: AssetExecutionContext, path_resource: PathResource) -> gpd.GeoDataFrame:
+    @asset(
+        name=str(year),
+        key_prefix="agebs",
+        partitions_def=zone_partitions,
+        io_manager_key="gpkg_manager",
+    )
+    def _asset(
+        context: AssetExecutionContext, path_resource: PathResource
+    ) -> gpd.GeoDataFrame:
         zone = context.partition_key
 
         agebs_path = Path(path_resource.pg_path) / "zone_agebs"
         fpath = agebs_path / f"{infix}/{year}/{zone}.gpkg"
-        df = (
-            gpd.read_file(fpath)
-            .to_crs("ESRI:54009")
-        )
+        df = gpd.read_file(fpath).to_crs("ESRI:54009")
         df["geometry"] = df["geometry"].make_valid()
-        return df   
-    
+        return df
+
     return _asset
 
 
