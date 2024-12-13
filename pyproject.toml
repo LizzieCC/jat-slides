@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "jat-slides"
+version = "0.1.0"
+description = ""
+authors = ["RodolfoFigueroa <4rodolfofigueroa2@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+ipykernel = "^6.29.5"
+python-pptx = "^1.0.2"
+geopandas = "^1.0.1"
+matplotlib = "^3.9.2"
+contextily = "^1.6.2"
+dagster = "^1.9.1"
+dagster-webserver = "^1.9.1"
+babel = "^2.16.0"
+toml = "^0.10.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.dagster]
+module_name = "jat_slides.definitions"
+code_location_name = "jat_slides"
