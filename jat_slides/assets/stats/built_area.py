@@ -7,7 +7,7 @@ import rasterio as rio
 
 from affine import Affine
 from dagster import graph_asset, op, AssetIn, Out
-from jat_slides.partitions import zone_partitions
+from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
 from pathlib import Path
 
@@ -73,6 +73,33 @@ def get_bounds(
     partitions_def=zone_partitions,
 )
 def built_area(
+    agebs_1990: gpd.GeoDataFrame,
+    agebs_2000: gpd.GeoDataFrame,
+    agebs_2010: gpd.GeoDataFrame,
+    agebs_2020: gpd.GeoDataFrame,
+) -> pd.DataFrame:
+    rasters, transforms = [], []
+    bounds = get_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+    for year in YEARS:
+        f = load_built_area_rasters_ops[year]
+        data, transform = f(bounds)
+        rasters.append(data)
+        transforms.append(transform)
+    return reduce_area_rasters(rasters, transforms)
+
+
+@graph_asset(
+    ins={
+        "agebs_1990": AssetIn(key=["muns", "1990"]),
+        "agebs_2000": AssetIn(key=["muns", "2000"]),
+        "agebs_2010": AssetIn(key=["muns", "2010"]),
+        "agebs_2020": AssetIn(key=["muns", "2020"]),
+    },
+    name="built_area_mun",
+    key_prefix="stats",
+    partitions_def=mun_partitions,
+)
+def built_area_mun(
     agebs_1990: gpd.GeoDataFrame,
     agebs_2000: gpd.GeoDataFrame,
     agebs_2010: gpd.GeoDataFrame,

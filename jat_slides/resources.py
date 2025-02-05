@@ -6,6 +6,7 @@ class PathResource(ConfigurableResource):
     out_path: str
     ghsl_path: str
     figure_path: str
+    framework_path: str
 
 
 class ZonesListResource(ConfigurableResource):

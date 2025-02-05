@@ -10,7 +10,8 @@ import rasterio as rio
 
 from affine import Affine
 from dagster import asset, AssetExecutionContext, AssetIn
-from jat_slides.partitions import zone_partitions
+from jat_slides.assets.common import get_mun_cells
+from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import (
     PathResource,
     ZonesMapListResource,
@@ -108,6 +109,47 @@ def population_grid_plot(
     return fig
 
 
+@asset(
+    name="population_grid_mun",
+    key_prefix="plot",
+    ins={"agebs": AssetIn(key=["muns", "2020"])},
+    partitions_def=mun_partitions,
+    io_manager_key="plot_manager",
+)
+def population_grid_plot_mun(
+    context: AssetExecutionContext,
+    path_resource: PathResource,
+    mun_bounds_resource: ZonesMapListResource,
+    zone_linewidths_resource: ZonesMapFloatResource,
+    agebs: gpd.GeoDataFrame
+) -> Figure:
+    df = get_mun_cells(context.partition_key, path_resource, agebs)    
+    fig, ax = generate_figure(*mun_bounds_resource.zones[context.partition_key])
+
+    cmap_bounds = get_cmap_bounds(df["difference"], 3)
+    norm = mcol.BoundaryNorm(cmap_bounds, 256)
+
+    if context.partition_key in zone_linewidths_resource.zones:
+        lw = zone_linewidths_resource.zones[context.partition_key]
+    else:
+        lw = 0.2
+    
+    df.to_crs("EPSG:4326").plot(
+        column="difference",
+        ax=ax,
+        cmap="RdBu",
+        ec="k",
+        lw=lw,
+        autolim=False,
+        norm=norm,
+        aspect=None
+    )
+    
+    add_pop_legend(cmap_bounds, ax=ax)
+    
+    return fig
+
+
 def add_built_legend(cmap, *, ax):
     patches = []
     for i, year in enumerate(range(1975, 2021, 5)):
@@ -138,6 +180,30 @@ def built_plot(
 
     cmap = mpl.colormaps["magma_r"].resampled(10)
     fig, ax = generate_figure(*zone_bounds_resource.zones[context.partition_key])
+    rio.plot.show(data, transform=transform, ax=ax, cmap=cmap)
+    add_built_legend(cmap, ax=ax)
+    
+    return fig
+
+
+@asset(
+    name="built_mun",
+    key_prefix="plot",
+    ins={"data_and_transform": AssetIn(key="built_mun", input_manager_key="reprojected_raster_manager")},
+    partitions_def=mun_partitions,
+    io_manager_key="plot_manager",
+)
+def built_plot_mun(
+    context: AssetExecutionContext,
+    data_and_transform: tuple[np.ndarray, Affine],
+    mun_bounds_resource: ZonesMapListResource,
+) -> Figure:
+    data, transform = data_and_transform
+    data = data.astype(float)
+    data[data == 0] = np.nan
+
+    cmap = mpl.colormaps["magma_r"].resampled(10)
+    fig, ax = generate_figure(*mun_bounds_resource.zones[context.partition_key])
     rio.plot.show(data, transform=transform, ax=ax, cmap=cmap)
     add_built_legend(cmap, ax=ax)
     

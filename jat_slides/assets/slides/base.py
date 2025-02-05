@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from babel.dates import format_date
-from jat_slides.resources import PathResource, ZonesListResource, ZonesMapStrResource
+from jat_slides.resources import ZonesListResource, ZonesMapStrResource
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.presentation import Presentation as PresentationType
@@ -14,6 +14,7 @@ from pptx.text.text import TextFrame
 from pptx.util import Cm, Pt
 from dagster import asset, AssetIn
 from pathlib import Path
+from typing import Optional
 
 
 def find_layouts(pres: PresentationType) -> dict[str, SlideLayout]:
@@ -240,6 +241,54 @@ def slides(
             pres,
             layouts["built"],
             built_after_frac,
+            pop_df=pop_df[zone],
+            built_area_df=built_df[zone],
+            urban_area_df=built_urban_df[zone],
+            picture_path=built_figure_paths[zone],
+        )
+
+    return pres
+
+
+@asset(
+    ins={
+        "lost_pop_after_2000": AssetIn(key=["stats", "lost_pop_after_2000_mun"]),
+        "built_after_2000": AssetIn(key=["stats", "built_after_2000_mun"]),
+        "pop_df": AssetIn(key=["stats", "population_mun"]),
+        "built_df": AssetIn(key=["stats", "built_area_mun"]),
+        "built_urban_df": AssetIn(key=["stats", "built_urban_area_mun"]),
+        "pg_figure_paths": AssetIn(
+            key=["plot", "population_grid_mun"], input_manager_key="path_manager"
+        ),
+        "built_figure_paths": AssetIn(
+            key=["plot", "built_mun"], input_manager_key="path_manager"
+        ),
+    },
+    io_manager_key="presentation_manager",
+)
+def slides_mun(
+    wanted_muns_resource: ZonesListResource,
+    mun_names_resource: ZonesMapStrResource,
+    lost_pop_after_2000: dict[str, Optional[float]],
+    built_after_2000: dict[str, Optional[float]],
+    pop_df: dict[str, Optional[pd.DataFrame]],
+    built_df: dict[str, Optional[pd.DataFrame]],
+    built_urban_df: dict[str, Optional[pd.DataFrame]],
+    pg_figure_paths: dict[str, Path],
+    built_figure_paths: dict[str, Path],
+) -> PresentationType:
+    pres = Presentation("./template.pptx")
+    layouts = find_layouts(pres)
+
+    add_title_slide(pres, layouts["title"])
+
+    for zone in wanted_muns_resource.zones:
+        add_section_slide(pres, layouts["section"], mun_names_resource.zones[zone])
+        add_lost_pop_slide(pres, layouts["pop"], lost_pop_after_2000[zone], pg_figure_paths[zone])
+        add_built_slide(
+            pres,
+            layouts["built"],
+            built_after_2000[zone],
             pop_df=pop_df[zone],
             built_area_df=built_df[zone],
             urban_area_df=built_urban_df[zone],

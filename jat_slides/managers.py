@@ -1,6 +1,6 @@
 from pathlib import Path
 from pptx.presentation import Presentation
-from typing import Union
+from typing import Optional, Union
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -68,10 +68,13 @@ class DataFrameIOManager(BaseManager):
         elif isinstance(path, dict):
             out_dict = {}
             for key, fpath in path.items():
-                if self._is_geodataframe():
-                    out_dict[key] = gpd.read_file(fpath)
+                if fpath.exists():
+                    if self._is_geodataframe():
+                        out_dict[key] = gpd.read_file(fpath)
+                    else:
+                        out_dict[key] = pd.read_csv(fpath)
                 else:
-                    out_dict[key] = pd.read_csv(fpath)
+                    out_dict[key] = None
             return out_dict
 
 
@@ -167,3 +170,28 @@ class PathIOManager(BaseManager):
         if isinstance(path, Path):
             assert path.exists()
         return path
+
+
+class TextIOManager(BaseManager):
+    def handle_output(self, context: OutputContext, obj) -> None:
+        fpath = self._get_path(context)
+        fpath.parent.mkdir(exist_ok=True, parents=True)
+        
+        with open(fpath, "w", encoding="utf8") as f:
+            obj = f"{obj:.10f}"
+            f.write(obj)
+
+    def load_input(self, context: InputContext) -> Union[float, dict[str, Optional[float]]]:
+        fpath = self._get_path(context)
+        if isinstance(fpath, str):
+            with open(fpath, "r", encoding="utf8") as f:
+                out = float(f.readline().strip("\n"))
+        else:
+            out = {}
+            for key, subpath in fpath.items():
+                if subpath.exists():
+                    with open(subpath, "r", encoding="utf8") as f:
+                        out[key] = float(f.readline().strip("\n"))
+                else:
+                    out[key] = None
+        return out

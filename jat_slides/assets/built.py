@@ -7,10 +7,11 @@ import numpy as np
 import rasterio as rio
 
 from affine import Affine
-from dagster import graph_asset, op, AssetIn, Out
-from jat_slides.partitions import zone_partitions
+from dagster import asset, graph_asset, op, AssetIn, OpExecutionContext, Out
+from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
 from pathlib import Path
+from shapely import Geometry
 
 
 YEARS = range(1975, 2021, 5)
@@ -79,6 +80,36 @@ def get_total_bounds(
     partitions_def=zone_partitions,
 )
 def built(
+    agebs_1990: gpd.GeoDataFrame,
+    agebs_2000: gpd.GeoDataFrame,
+    agebs_2010: gpd.GeoDataFrame,
+    agebs_2020: gpd.GeoDataFrame,
+) -> None:
+    bounds = get_total_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+
+    rasters, transforms = [], []
+    for year in YEARS:
+        f = load_built_rasters_ops[year]
+        data, transform = f(bounds)
+        rasters.append(data)
+        transforms.append(transform)
+
+    out = reduce_rasters(rasters, transforms)
+    return out
+
+
+# pylint: disable=no-value-for-parameter
+@graph_asset(
+    name="built_mun",
+    ins={
+        "agebs_1990": AssetIn(key=["muns", "1990"]),
+        "agebs_2000": AssetIn(key=["muns", "2000"]),
+        "agebs_2010": AssetIn(key=["muns", "2010"]),
+        "agebs_2020": AssetIn(key=["muns", "2020"]),
+    },
+    partitions_def=mun_partitions,
+)
+def built_mun(
     agebs_1990: gpd.GeoDataFrame,
     agebs_2000: gpd.GeoDataFrame,
     agebs_2010: gpd.GeoDataFrame,

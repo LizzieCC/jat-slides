@@ -1,5 +1,4 @@
 import geopandas as gpd
-import pandas as pd
 
 from dagster import asset, AssetExecutionContext
 from jat_slides.partitions import zone_partitions
@@ -27,9 +26,8 @@ def agebs_factory(year: int):
     ) -> gpd.GeoDataFrame:
         zone = context.partition_key
 
-        agebs_path = Path(path_resource.pg_path) / "zone_agebs"
-        fpath = agebs_path / f"{infix}/{year}/{zone}.gpkg"
-        df = gpd.read_file(fpath).to_crs("ESRI:54009")
+        agebs_path = Path(path_resource.pg_path) / f"zone_agebs/{infix}/{year}/{zone}.gpkg"
+        df = gpd.read_file(agebs_path).to_crs("ESRI:54009")
         df["geometry"] = df["geometry"].make_valid()
         return df
 
