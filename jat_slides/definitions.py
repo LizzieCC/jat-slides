@@ -13,6 +13,7 @@ from jat_slides.managers import (
     PlotFigIOManager,
     PresentationIOManager,
     RasterIOManager,
+    ReprojectedRasterIOManager,
 )
 from jat_slides.resources import (
     PathResource,
@@ -51,11 +52,12 @@ zone_linewidths_resource = ZonesMapFloatResource(zones=config["linewidths"])
 csv_manager = DataFrameIOManager(path_resource=path_resource, extension=".csv")
 gpkg_manager = DataFrameIOManager(path_resource=path_resource, extension=".gpkg")
 raster_manager = RasterIOManager(path_resource=path_resource, extension=".tif")
+reprojected_raster_manager = ReprojectedRasterIOManager(path_resource=path_resource, extension=".tif", crs="EPSG:4326")
 presentation_manger = PresentationIOManager(
     path_resource=path_resource, extension=".pptx"
 )
-plot_manager = PlotFigIOManager(path_resource=path_resource, extension=".png")
-path_manager = PathIOManager(path_resource=path_resource, extension=".png")
+plot_manager = PlotFigIOManager(path_resource=path_resource, extension=".jpg")
+path_manager = PathIOManager(path_resource=path_resource, extension=".jpg")
 
 
 # Definitions
@@ -72,6 +74,7 @@ defs = Definitions.merge(
             "gpkg_manager": gpkg_manager,
             "presentation_manager": presentation_manger,
             "raster_manager": raster_manager,
+            "reprojected_raster_manager": reprojected_raster_manager,
             "plot_manager": plot_manager,
             "path_manager": path_manager,
         },

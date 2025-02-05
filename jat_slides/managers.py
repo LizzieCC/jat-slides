@@ -113,6 +113,28 @@ class RasterIOManager(BaseManager):
             return out_dict
 
 
+class ReprojectedRasterIOManager(RasterIOManager):
+    crs: str
+
+    def _get_raster_and_transform(self, fpath: Path) -> tuple[np.ndarray, Affine]:
+        with rio.open(fpath) as ds:
+            transform, width, height = rio.warp.calculate_default_transform(
+            ds.crs, self.crs, ds.width, ds.height, *ds.bounds)
+
+            data = np.zeros((height, width), dtype=int)
+            rio.warp.reproject(
+                ds.read(1),
+                data,
+                src_transform=ds.transform,
+                src_crs=ds.crs,
+                dst_transform=transform,
+                dst_crs=self.crs,
+                resampling=rio.warp.Resampling.nearest
+            )
+        
+        return data, transform
+        
+
 class PresentationIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj: Presentation):
         fpath = self._get_path(context)
@@ -127,6 +149,7 @@ class PlotFigIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj: Figure):
         fpath = self._get_path(context)
         fpath.parent.mkdir(exist_ok=True, parents=True)
+                
         obj.savefig(fpath, dpi=250)
         obj.clf()
         plt.close(obj)

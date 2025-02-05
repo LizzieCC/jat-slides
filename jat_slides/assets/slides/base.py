@@ -203,11 +203,13 @@ def add_built_slide(
         "pg_figure_paths": AssetIn(
             key=["plot", "population_grid"], input_manager_key="path_manager"
         ),
+        "built_figure_paths": AssetIn(
+            key=["plot", "built"], input_manager_key="path_manager"
+        ),
     },
     io_manager_key="presentation_manager",
 )
 def slides(
-    path_resource: PathResource,
     wanted_zones_resource: ZonesListResource,
     zone_names_resource: ZonesMapStrResource,
     lost_pop_after_2000: pd.DataFrame,
@@ -216,9 +218,8 @@ def slides(
     built_df: dict[str, pd.DataFrame],
     built_urban_df: dict[str, pd.DataFrame],
     pg_figure_paths: dict[str, Path],
+    built_figure_paths: dict[str, Path],
 ) -> PresentationType:
-    figure_path = Path(path_resource.figure_path)
-
     pres = Presentation("./template.pptx")
     layouts = find_layouts(pres)
 
@@ -235,7 +236,6 @@ def slides(
         built_after_frac = built_after_2000.loc[
             built_after_2000["zone"] == zone, "built"
         ].item()
-        built_year_fig = figure_path / f"built/{zone}_r.png"
         add_built_slide(
             pres,
             layouts["built"],
@@ -243,7 +243,7 @@ def slides(
             pop_df=pop_df[zone],
             built_area_df=built_df[zone],
             urban_area_df=built_urban_df[zone],
-            picture_path=built_year_fig,
+            picture_path=built_figure_paths[zone],
         )
 
     return pres
