@@ -3,6 +3,7 @@ from pptx.presentation import Presentation
 from typing import Union
 
 import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio as rio
@@ -15,6 +16,7 @@ from dagster import (
     ResourceDependency,
 )
 from jat_slides.resources import PathResource
+from matplotlib.figure import Figure
 
 
 class BaseManager(ConfigurableIOManager):
@@ -41,16 +43,6 @@ class BaseManager(ConfigurableIOManager):
             final_path = fpath.with_suffix(fpath.suffix + self.extension)
 
         return final_path
-
-
-class PathIOManager(BaseManager):
-    def handle_output(self, context: OutputContext, obj) -> None:
-        raise NotImplementedError
-
-    def load_input(self, context: InputContext) -> Path:
-        path = self._get_path(context)
-        assert path.exists()
-        return path
 
 
 class DataFrameIOManager(BaseManager):
@@ -129,3 +121,26 @@ class PresentationIOManager(BaseManager):
 
     def load_input(self, context: InputContext):
         raise NotImplementedError
+
+
+class PlotFigIOManager(BaseManager):
+    def handle_output(self, context: OutputContext, obj: Figure):
+        fpath = self._get_path(context)
+        fpath.parent.mkdir(exist_ok=True, parents=True)
+        obj.savefig(fpath, dpi=250)
+        obj.clf()
+        plt.close(obj)
+
+    def load_input(self, context: InputContext):
+        raise NotImplementedError
+
+
+class PathIOManager(BaseManager):
+    def handle_output(self, context: OutputContext, obj) -> None:
+        raise NotImplementedError
+
+    def load_input(self, context: InputContext) -> Union[Path, dict[str, Path]]:
+        path = self._get_path(context)
+        if isinstance(path, Path):
+            assert path.exists()
+        return path

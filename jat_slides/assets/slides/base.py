@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from babel.dates import format_date
-from jat_slides.resources import PathResource, ZonesResource
+from jat_slides.resources import PathResource, ZonesListResource, ZonesMapStrResource
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.presentation import Presentation as PresentationType
@@ -200,17 +200,22 @@ def add_built_slide(
         "pop_df": AssetIn(key=["stats", "population"]),
         "built_df": AssetIn(key=["stats", "built_area"]),
         "built_urban_df": AssetIn(key=["stats", "built_urban_area"]),
+        "pg_figure_paths": AssetIn(
+            key=["plot", "population_grid"], input_manager_key="path_manager"
+        ),
     },
     io_manager_key="presentation_manager",
 )
 def slides(
     path_resource: PathResource,
-    zones_resource: ZonesResource,
+    wanted_zones_resource: ZonesListResource,
+    zone_names_resource: ZonesMapStrResource,
     lost_pop_after_2000: pd.DataFrame,
     built_after_2000: pd.DataFrame,
     pop_df: dict[str, pd.DataFrame],
     built_df: dict[str, pd.DataFrame],
     built_urban_df: dict[str, pd.DataFrame],
+    pg_figure_paths: dict[str, Path],
 ) -> PresentationType:
     figure_path = Path(path_resource.figure_path)
 
@@ -219,14 +224,13 @@ def slides(
 
     add_title_slide(pres, layouts["title"])
 
-    for zone in zones_resource.wanted_zones:
-        add_section_slide(pres, layouts["section"], zones_resource.zone_names[zone])
+    for zone in wanted_zones_resource.zones:
+        add_section_slide(pres, layouts["section"], zone_names_resource.zones[zone])
 
         lost_pop_frac = lost_pop_after_2000.loc[
             lost_pop_after_2000["zone"] == zone, "lost"
         ].item()
-        lost_pop_fig = figure_path / f"mesh/{zone}.png"
-        add_lost_pop_slide(pres, layouts["pop"], lost_pop_frac, lost_pop_fig)
+        add_lost_pop_slide(pres, layouts["pop"], lost_pop_frac, pg_figure_paths[zone])
 
         built_after_frac = built_after_2000.loc[
             built_after_2000["zone"] == zone, "built"
