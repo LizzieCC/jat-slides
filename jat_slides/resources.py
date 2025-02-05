@@ -8,6 +8,17 @@ class PathResource(ConfigurableResource):
     figure_path: str
 
 
-class ZonesResource(ConfigurableResource):
-    wanted_zones: list[str]
-    zone_names: dict[str, str]
+class ZonesListResource(ConfigurableResource):
+    zones: list[str]
+
+
+class ZonesMapListResource(ConfigurableResource):
+    zones: dict[str, list[float, float, float, float]]
+
+
+class ZonesMapStrResource(ConfigurableResource):
+    zones: dict[str, str]
+
+
+class ZonesMapFloatResource(ConfigurableResource):
+    zones: dict[str, float]
