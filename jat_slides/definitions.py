@@ -30,11 +30,11 @@ built_assets = load_assets_from_modules([built], group_name="built_rasters")
 map_assets = load_assets_from_modules([maps], group_name="maps")
 muns_assets = load_assets_from_modules([muns], group_name="muns")
 
-built_area_assets = load_assets_from_modules([stats.built_area], group_name="built_area")
-built_urban_area_assets = load_assets_from_modules([stats.built_urban_area], group_name="built_urban_area")
-built_after_2000_assets = load_assets_from_modules([stats.built_after_2000], group_name="built_after_2000")
-lost_pop_after_2000_assets = load_assets_from_modules([stats.lost_pop_after_2000], group_name="lost_pop_after_2000")
-population_assets = load_assets_from_modules([stats.population], group_name="population")
+built_area_assets = load_assets_from_modules([stats.built_area])
+built_urban_area_assets = load_assets_from_modules([stats.built_urban_area])
+built_after_2000_assets = load_assets_from_modules([stats.built_after_2000])
+lost_pop_after_2000_assets = load_assets_from_modules([stats.lost_pop_after_2000])
+population_assets = load_assets_from_modules([stats.population])
 
 # Resources
 path_resource = PathResource(

@@ -194,6 +194,42 @@ def add_built_slide(
         figure_shape.insert_picture(str(picture_path))
 
 
+def generate_slides(
+    *, 
+    id_list: list[str], 
+    name_map: ZonesMapStrResource,
+    lost_pop_after_2000: pd.DataFrame,
+    built_after_2000: pd.DataFrame,
+    pop_df: dict[str, pd.DataFrame],
+    built_df: dict[str, pd.DataFrame],
+    built_urban_df: dict[str, pd.DataFrame],
+    pg_figure_paths: dict[str, Path],
+    built_figure_paths: dict[str, Path]
+):
+    pres = Presentation("./template.pptx")
+    layouts = find_layouts(pres)
+
+    add_title_slide(pres, layouts["title"])
+
+    for zone in id_list:
+        add_section_slide(pres, layouts["section"], name_map.zones[zone])
+
+        lost_pop_frac = lost_pop_after_2000[zone]
+        add_lost_pop_slide(pres, layouts["pop"], lost_pop_frac, pg_figure_paths[zone])
+
+        built_after_frac = built_after_2000[zone]
+        add_built_slide(
+            pres,
+            layouts["built"],
+            built_after_frac,
+            pop_df=pop_df[zone],
+            built_area_df=built_df[zone],
+            urban_area_df=built_urban_df[zone],
+            picture_path=built_figure_paths[zone],
+        )
+
+    return pres
+
 @asset(
     ins={
         "lost_pop_after_2000": AssetIn(key=["stats", "lost_pop_after_2000"]),
@@ -221,42 +257,26 @@ def slides(
     pg_figure_paths: dict[str, Path],
     built_figure_paths: dict[str, Path],
 ) -> PresentationType:
-    pres = Presentation("./template.pptx")
-    layouts = find_layouts(pres)
-
-    add_title_slide(pres, layouts["title"])
-
-    for zone in wanted_zones_resource.zones:
-        add_section_slide(pres, layouts["section"], zone_names_resource.zones[zone])
-
-        lost_pop_frac = lost_pop_after_2000.loc[
-            lost_pop_after_2000["zone"] == zone, "lost"
-        ].item()
-        add_lost_pop_slide(pres, layouts["pop"], lost_pop_frac, pg_figure_paths[zone])
-
-        built_after_frac = built_after_2000.loc[
-            built_after_2000["zone"] == zone, "built"
-        ].item()
-        add_built_slide(
-            pres,
-            layouts["built"],
-            built_after_frac,
-            pop_df=pop_df[zone],
-            built_area_df=built_df[zone],
-            urban_area_df=built_urban_df[zone],
-            picture_path=built_figure_paths[zone],
-        )
-
-    return pres
+    return generate_slides(
+        id_list=wanted_zones_resource.zones, 
+        name_map=zone_names_resource, 
+        lost_pop_after_2000=lost_pop_after_2000,
+        built_after_2000=built_after_2000,
+        pop_df=pop_df,
+        built_df=built_df,
+        built_urban_df=built_urban_df,
+        pg_figure_paths=pg_figure_paths,
+        built_figure_paths=built_figure_paths
+    )
 
 
 @asset(
     ins={
-        "lost_pop_after_2000": AssetIn(key=["stats", "lost_pop_after_2000_mun"]),
-        "built_after_2000": AssetIn(key=["stats", "built_after_2000_mun"]),
-        "pop_df": AssetIn(key=["stats", "population_mun"]),
-        "built_df": AssetIn(key=["stats", "built_area_mun"]),
-        "built_urban_df": AssetIn(key=["stats", "built_urban_area_mun"]),
+        "lost_pop_after_2000": AssetIn(key=["stats_mun", "lost_pop_after_2000"]),
+        "built_after_2000": AssetIn(key=["stats_mun", "built_after_2000"]),
+        "pop_df": AssetIn(key=["stats_mun", "population"]),
+        "built_df": AssetIn(key=["stats_mun", "built_area"]),
+        "built_urban_df": AssetIn(key=["stats_mun", "built_urban_area"]),
         "pg_figure_paths": AssetIn(
             key=["plot", "population_grid_mun"], input_manager_key="path_manager"
         ),
@@ -277,22 +297,14 @@ def slides_mun(
     pg_figure_paths: dict[str, Path],
     built_figure_paths: dict[str, Path],
 ) -> PresentationType:
-    pres = Presentation("./template.pptx")
-    layouts = find_layouts(pres)
-
-    add_title_slide(pres, layouts["title"])
-
-    for zone in wanted_muns_resource.zones:
-        add_section_slide(pres, layouts["section"], mun_names_resource.zones[zone])
-        add_lost_pop_slide(pres, layouts["pop"], lost_pop_after_2000[zone], pg_figure_paths[zone])
-        add_built_slide(
-            pres,
-            layouts["built"],
-            built_after_2000[zone],
-            pop_df=pop_df[zone],
-            built_area_df=built_df[zone],
-            urban_area_df=built_urban_df[zone],
-            picture_path=built_figure_paths[zone],
-        )
-
-    return pres
+    return generate_slides(
+        id_list=wanted_muns_resource.zones,
+        name_map=mun_names_resource, 
+        lost_pop_after_2000=lost_pop_after_2000,
+        built_after_2000=built_after_2000,
+        pop_df=pop_df,
+        built_df=built_df,
+        built_urban_df=built_urban_df,
+        pg_figure_paths=pg_figure_paths,
+        built_figure_paths=built_figure_paths
+    )

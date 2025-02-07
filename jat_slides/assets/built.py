@@ -7,7 +7,7 @@ import numpy as np
 import rasterio as rio
 
 from affine import Affine
-from dagster import asset, graph_asset, op, AssetIn, OpExecutionContext, Out
+from dagster import asset, graph, graph_asset, op, AssetIn, OpExecutionContext, Out
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
 from pathlib import Path
@@ -20,6 +20,7 @@ YEARS = range(1975, 2021, 5)
 def load_built_rasters_factory(year: int):
     @op(name=f"load_built_rasters_{year}", out={"data": Out(), "transform": Out()})
     def _op(path_resource: PathResource, bounds: list) -> tuple[np.ndarray, Affine]:
+        print(bounds)
         fpath = Path(path_resource.ghsl_path) / f"BUILT_100/{year}.tif"
         with rio.open(fpath, nodata=65535) as ds:
             data, transform = rio.mask.mask(ds, bounds, crop=True, nodata=0)
@@ -68,7 +69,21 @@ def get_total_bounds(
     return [shapely.union_all(geoms)]
 
 
-# pylint: disable=no-value-for-parameter
+@graph
+def built_graph(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame, agebs_2010: gpd.GeoDataFrame, agebs_2020: gpd.GeoDataFrame) -> tuple[np.ndarray, Affine] :
+    bounds = get_total_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+
+    rasters, transforms = [], []
+    for year in YEARS:
+        f = load_built_rasters_ops[year]
+        data, transform = f(bounds)
+        rasters.append(data)
+        transforms.append(transform)
+
+    out = reduce_rasters(rasters, transforms)
+    return out
+
+
 @graph_asset(
     name="built",
     ins={
@@ -84,21 +99,10 @@ def built(
     agebs_2000: gpd.GeoDataFrame,
     agebs_2010: gpd.GeoDataFrame,
     agebs_2020: gpd.GeoDataFrame,
-) -> None:
-    bounds = get_total_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
-
-    rasters, transforms = [], []
-    for year in YEARS:
-        f = load_built_rasters_ops[year]
-        data, transform = f(bounds)
-        rasters.append(data)
-        transforms.append(transform)
-
-    out = reduce_rasters(rasters, transforms)
-    return out
+) -> tuple[np.ndarray, Affine]:
+    return built_graph(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
 
 
-# pylint: disable=no-value-for-parameter
 @graph_asset(
     name="built_mun",
     ins={
@@ -114,15 +118,5 @@ def built_mun(
     agebs_2000: gpd.GeoDataFrame,
     agebs_2010: gpd.GeoDataFrame,
     agebs_2020: gpd.GeoDataFrame,
-) -> None:
-    bounds = get_total_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
-
-    rasters, transforms = [], []
-    for year in YEARS:
-        f = load_built_rasters_ops[year]
-        data, transform = f(bounds)
-        rasters.append(data)
-        transforms.append(transform)
-
-    out = reduce_rasters(rasters, transforms)
-    return out
+) -> tuple[np.ndarray, Affine]:
+    return built_graph(agebs_1990, agebs_2000, agebs_2010, agebs_2020)

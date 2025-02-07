@@ -6,7 +6,7 @@ import pandas as pd
 import rasterio as rio
 
 from affine import Affine
-from dagster import graph_asset, op, AssetIn, Out
+from dagster import graph, graph_asset, op, AssetIn, Out
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
 from pathlib import Path
@@ -61,6 +61,17 @@ def get_bounds(
     return bounds
 
 
+@graph
+def built_area_graph(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame, agebs_2010: gpd.GeoDataFrame, agebs_2020: gpd.GeoDataFrame) -> pd.DataFrame:
+    rasters, transforms = [], []
+    bounds = get_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+    for year in YEARS:
+        f = load_built_area_rasters_ops[year]
+        data, transform = f(bounds)
+        rasters.append(data)
+        transforms.append(transform)
+    return reduce_area_rasters(rasters, transforms)
+
 @graph_asset(
     ins={
         "agebs_1990": AssetIn(key=["agebs", "1990"]),
@@ -71,6 +82,7 @@ def get_bounds(
     name="built_area",
     key_prefix="stats",
     partitions_def=zone_partitions,
+    group_name="stats"
 )
 def built_area(
     agebs_1990: gpd.GeoDataFrame,
@@ -78,14 +90,7 @@ def built_area(
     agebs_2010: gpd.GeoDataFrame,
     agebs_2020: gpd.GeoDataFrame,
 ) -> pd.DataFrame:
-    rasters, transforms = [], []
-    bounds = get_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
-    for year in YEARS:
-        f = load_built_area_rasters_ops[year]
-        data, transform = f(bounds)
-        rasters.append(data)
-        transforms.append(transform)
-    return reduce_area_rasters(rasters, transforms)
+    return built_area_graph(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
 
 
 @graph_asset(
@@ -95,9 +100,10 @@ def built_area(
         "agebs_2010": AssetIn(key=["muns", "2010"]),
         "agebs_2020": AssetIn(key=["muns", "2020"]),
     },
-    name="built_area_mun",
-    key_prefix="stats",
+    name="built_area",
+    key_prefix="stats_mun",
     partitions_def=mun_partitions,
+    group_name="stats_mun"
 )
 def built_area_mun(
     agebs_1990: gpd.GeoDataFrame,
@@ -105,11 +111,4 @@ def built_area_mun(
     agebs_2010: gpd.GeoDataFrame,
     agebs_2020: gpd.GeoDataFrame,
 ) -> pd.DataFrame:
-    rasters, transforms = [], []
-    bounds = get_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
-    for year in YEARS:
-        f = load_built_area_rasters_ops[year]
-        data, transform = f(bounds)
-        rasters.append(data)
-        transforms.append(transform)
-    return reduce_area_rasters(rasters, transforms)
+    return built_area_graph(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
