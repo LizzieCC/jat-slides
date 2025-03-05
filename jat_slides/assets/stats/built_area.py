@@ -62,7 +62,12 @@ def get_bounds(
 
 
 @graph
-def built_area_graph(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame, agebs_2010: gpd.GeoDataFrame, agebs_2020: gpd.GeoDataFrame) -> pd.DataFrame:
+def built_area_graph(
+    agebs_1990: gpd.GeoDataFrame,
+    agebs_2000: gpd.GeoDataFrame,
+    agebs_2010: gpd.GeoDataFrame,
+    agebs_2020: gpd.GeoDataFrame,
+) -> pd.DataFrame:
     rasters, transforms = [], []
     bounds = get_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
     for year in YEARS:
@@ -71,6 +76,7 @@ def built_area_graph(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame,
         rasters.append(data)
         transforms.append(transform)
     return reduce_area_rasters(rasters, transforms)
+
 
 @graph_asset(
     ins={
@@ -82,7 +88,7 @@ def built_area_graph(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame,
     name="built_area",
     key_prefix="stats",
     partitions_def=zone_partitions,
-    group_name="stats"
+    group_name="stats",
 )
 def built_area(
     agebs_1990: gpd.GeoDataFrame,
@@ -103,7 +109,7 @@ def built_area(
     name="built_area",
     key_prefix="stats_mun",
     partitions_def=mun_partitions,
-    group_name="stats_mun"
+    group_name="stats_mun",
 )
 def built_area_mun(
     agebs_1990: gpd.GeoDataFrame,

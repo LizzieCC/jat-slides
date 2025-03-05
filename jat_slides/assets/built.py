@@ -70,7 +70,12 @@ def get_total_bounds(
 
 
 @graph
-def built_graph(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame, agebs_2010: gpd.GeoDataFrame, agebs_2020: gpd.GeoDataFrame) -> tuple[np.ndarray, Affine] :
+def built_graph(
+    agebs_1990: gpd.GeoDataFrame,
+    agebs_2000: gpd.GeoDataFrame,
+    agebs_2010: gpd.GeoDataFrame,
+    agebs_2020: gpd.GeoDataFrame,
+) -> tuple[np.ndarray, Affine]:
     bounds = get_total_bounds(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
 
     rasters, transforms = [], []

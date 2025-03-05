@@ -5,7 +5,12 @@ from dagster import asset, AssetIn
 from jat_slides.partitions import mun_partitions, zone_partitions
 
 
-def calculate_lost_pop(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFrame, agebs_2010: gpd.GeoDataFrame, agebs_2020: gpd.GeoDataFrame) -> pd.DataFrame:
+def calculate_lost_pop(
+    agebs_1990: gpd.GeoDataFrame,
+    agebs_2000: gpd.GeoDataFrame,
+    agebs_2010: gpd.GeoDataFrame,
+    agebs_2020: gpd.GeoDataFrame,
+) -> pd.DataFrame:
     pops = []
     for year, agebs in zip(
         (1990, 2000, 2010, 2020), (agebs_1990, agebs_2000, agebs_2010, agebs_2020)
@@ -26,7 +31,7 @@ def calculate_lost_pop(agebs_1990: gpd.GeoDataFrame, agebs_2000: gpd.GeoDataFram
     key_prefix="stats",
     partitions_def=zone_partitions,
     io_manager_key="csv_manager",
-    group_name="stats"
+    group_name="stats",
 )
 def population(
     agebs_1990: gpd.GeoDataFrame,
@@ -48,7 +53,7 @@ def population(
     key_prefix="stats_mun",
     partitions_def=mun_partitions,
     io_manager_key="csv_manager",
-    group_name="stats_mun"
+    group_name="stats_mun",
 )
 def population_mun(
     agebs_1990: gpd.GeoDataFrame,
@@ -57,4 +62,3 @@ def population_mun(
     agebs_2020: gpd.GeoDataFrame,
 ) -> pd.DataFrame:
     return calculate_lost_pop(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
-

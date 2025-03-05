@@ -5,7 +5,9 @@ from jat_slides.resources import PathResource
 from pathlib import Path
 
 
-def get_mun_cells(partition_key: str, path_resource: PathResource, agebs: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+def get_mun_cells(
+    partition_key: str, path_resource: PathResource, agebs: gpd.GeoDataFrame
+) -> gpd.GeoDataFrame:
     if len(partition_key) == 4:
         ent = partition_key[0].rjust(2, "0")
     else:
@@ -18,6 +20,8 @@ def get_mun_cells(partition_key: str, path_resource: PathResource, agebs: gpd.Ge
         df.append(temp)
     df = pd.concat(df)
 
-    joined = df.sjoin(agebs.to_crs("EPSG:6372"), how="inner", predicate="intersects")["codigo"].unique()
+    joined = df.sjoin(agebs.to_crs("EPSG:6372"), how="inner", predicate="intersects")[
+        "codigo"
+    ].unique()
     df = df[df["codigo"].isin(joined)]
     return df

@@ -43,7 +43,7 @@ path_resource = PathResource(
     out_path=EnvVar("OUT_PATH"),
     figure_path=EnvVar("FIGURE_PATH"),
     segregation_path=EnvVar("SEGREGATION_PATH"),
-    jobs_path=EnvVar("JOBS_PATH")
+    jobs_path=EnvVar("JOBS_PATH"),
 )
 
 with open("./config.toml", "r", encoding="utf8") as f:
@@ -63,7 +63,9 @@ mun_bounds_resource = ZonesMapListResource(zones=config["bounds_mun"])
 csv_manager = DataFrameIOManager(path_resource=path_resource, extension=".csv")
 gpkg_manager = DataFrameIOManager(path_resource=path_resource, extension=".gpkg")
 raster_manager = RasterIOManager(path_resource=path_resource, extension=".tif")
-reprojected_raster_manager = ReprojectedRasterIOManager(path_resource=path_resource, extension=".tif", crs="EPSG:4326")
+reprojected_raster_manager = ReprojectedRasterIOManager(
+    path_resource=path_resource, extension=".tif", crs="EPSG:4326"
+)
 presentation_manger = PresentationIOManager(
     path_resource=path_resource, extension=".pptx"
 )
@@ -76,14 +78,14 @@ text_manager = TextIOManager(path_resource=path_resource, extension=".txt")
 defs = Definitions.merge(
     Definitions(
         assets=(
-            ageb_assets 
-            + built_assets 
+            ageb_assets
+            + built_assets
             + built_after_2000_assets
             + built_area_assets
             + built_urban_area_assets
             + lost_pop_after_2000_assets
             + population_assets
-            + map_assets 
+            + map_assets
             + muns_assets
         ),
         resources={

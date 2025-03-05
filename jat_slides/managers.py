@@ -122,7 +122,8 @@ class ReprojectedRasterIOManager(RasterIOManager):
     def _get_raster_and_transform(self, fpath: Path) -> tuple[np.ndarray, Affine]:
         with rio.open(fpath) as ds:
             transform, width, height = rio.warp.calculate_default_transform(
-            ds.crs, self.crs, ds.width, ds.height, *ds.bounds)
+                ds.crs, self.crs, ds.width, ds.height, *ds.bounds
+            )
 
             data = np.zeros((height, width), dtype=int)
             rio.warp.reproject(
@@ -132,11 +133,11 @@ class ReprojectedRasterIOManager(RasterIOManager):
                 src_crs=ds.crs,
                 dst_transform=transform,
                 dst_crs=self.crs,
-                resampling=rio.warp.Resampling.nearest
+                resampling=rio.warp.Resampling.nearest,
             )
-        
+
         return data, transform
-        
+
 
 class PresentationIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj: Presentation):
@@ -152,7 +153,7 @@ class PlotFigIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj: Figure):
         fpath = self._get_path(context)
         fpath.parent.mkdir(exist_ok=True, parents=True)
-                
+
         obj.savefig(fpath, dpi=250)
         obj.clf()
         plt.close(obj)
@@ -176,12 +177,14 @@ class TextIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj) -> None:
         fpath = self._get_path(context)
         fpath.parent.mkdir(exist_ok=True, parents=True)
-        
+
         with open(fpath, "w", encoding="utf8") as f:
             obj = f"{obj:.10f}"
             f.write(obj)
 
-    def load_input(self, context: InputContext) -> Union[float, dict[str, Optional[float]]]:
+    def load_input(
+        self, context: InputContext
+    ) -> Union[float, dict[str, Optional[float]]]:
         fpath = self._get_path(context)
         if isinstance(fpath, str):
             with open(fpath, "r", encoding="utf8") as f:

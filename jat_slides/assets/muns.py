@@ -36,7 +36,7 @@ def muns_factory(year: int):
         df = []
         for path in agebs_dir_path.glob(f"{ent}.*.gpkg"):
             df.append(gpd.read_file(path).to_crs("ESRI:54009"))
-        
+
         df = pd.concat(df)
         df["geometry"] = df["geometry"].make_valid()
 

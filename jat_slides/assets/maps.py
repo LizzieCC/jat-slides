@@ -1,5 +1,5 @@
 import json
-import rasterio.plot # pylint: disable=unused-import
+import rasterio.plot  # pylint: disable=unused-import
 
 import contextily as cx
 import geopandas as gpd
@@ -48,7 +48,12 @@ def add_pop_legend(bounds, *, ax):
         patches.append(Patch(color=cmap(i), label=label))
     patches = patches[::-1]
 
-    ax.legend(handles=patches, loc="lower right", title="Cambio de población\n(2020 - 2000)", alignment="left")
+    ax.legend(
+        handles=patches,
+        loc="lower right",
+        title="Cambio de población\n(2020 - 2000)",
+        alignment="left",
+    )
 
 
 def generate_figure(xmin: float, ymin: float, xmax: float, ymax: float):
@@ -96,7 +101,7 @@ def population_grid_plot(
         / f"differences/2000_2020/{context.partition_key}.gpkg"
     )
     df: gpd.GeoDataFrame = gpd.read_file(fpath)
-    
+
     fig, ax = generate_figure(*zone_bounds_resource.zones[context.partition_key])
 
     cmap_bounds = get_cmap_bounds(df["difference"], 3)
@@ -106,7 +111,7 @@ def population_grid_plot(
         lw = zone_linewidths_resource.zones[context.partition_key]
     else:
         lw = 0.2
-    
+
     df.to_crs("EPSG:4326").plot(
         column="difference",
         ax=ax,
@@ -115,11 +120,11 @@ def population_grid_plot(
         lw=lw,
         autolim=False,
         norm=norm,
-        aspect=None
+        aspect=None,
     )
-    
+
     add_pop_legend(cmap_bounds, ax=ax)
-    
+
     return fig
 
 
@@ -135,9 +140,9 @@ def population_grid_plot_mun(
     path_resource: PathResource,
     mun_bounds_resource: ZonesMapListResource,
     zone_linewidths_resource: ZonesMapFloatResource,
-    agebs: gpd.GeoDataFrame
+    agebs: gpd.GeoDataFrame,
 ) -> Figure:
-    df = get_mun_cells(context.partition_key, path_resource, agebs)    
+    df = get_mun_cells(context.partition_key, path_resource, agebs)
     fig, ax = generate_figure(*mun_bounds_resource.zones[context.partition_key])
 
     cmap_bounds = get_cmap_bounds(df["difference"], 3)
@@ -147,7 +152,7 @@ def population_grid_plot_mun(
         lw = zone_linewidths_resource.zones[context.partition_key]
     else:
         lw = 0.2
-    
+
     df.to_crs("EPSG:4326").plot(
         column="difference",
         ax=ax,
@@ -156,11 +161,11 @@ def population_grid_plot_mun(
         lw=lw,
         autolim=False,
         norm=norm,
-        aspect=None
+        aspect=None,
     )
-    
+
     add_pop_legend(cmap_bounds, ax=ax)
-    
+
     return fig
 
 
@@ -173,13 +178,22 @@ def add_built_legend(cmap, *, ax):
             label = str(year)
         patches.append(Patch(color=cmap(i), label=label))
 
-    ax.legend(handles=patches, loc="lower right", title="Año de construcción", alignment="left")
+    ax.legend(
+        handles=patches,
+        loc="lower right",
+        title="Año de construcción",
+        alignment="left",
+    )
 
 
 @asset(
     name="built",
     key_prefix="plot",
-    ins={"data_and_transform": AssetIn(key="built", input_manager_key="reprojected_raster_manager")},
+    ins={
+        "data_and_transform": AssetIn(
+            key="built", input_manager_key="reprojected_raster_manager"
+        )
+    },
     partitions_def=zone_partitions,
     io_manager_key="plot_manager",
 )
@@ -196,7 +210,7 @@ def built_plot(
     fig, ax = generate_figure(*zone_bounds_resource.zones[context.partition_key])
     rio.plot.show(data, transform=transform, ax=ax, cmap=cmap)
     add_built_legend(cmap, ax=ax)
-    
+
     return fig
 
 
@@ -210,7 +224,7 @@ def income_plot(
     context: AssetExecutionContext,
     path_resource: PathResource,
     zone_bounds_resource: ZonesMapListResource,
-    zone_linewidths_resource: ZonesMapFloatResource
+    zone_linewidths_resource: ZonesMapFloatResource,
 ) -> Figure:
     segregation_path = Path(path_resource.segregation_path)
 
@@ -218,7 +232,10 @@ def income_plot(
         long_to_short_map = {value: key for key, value in json.load(f).items()}
 
     df = (
-        gpd.read_file(segregation_path / f"incomes/{long_to_short_map[context.partition_key]}.gpkg")
+        gpd.read_file(
+            segregation_path
+            / f"incomes/{long_to_short_map[context.partition_key]}.gpkg"
+        )
         .dropna(subset=["income_pc"])
         .to_crs("EPSG:4326")
     )
@@ -229,9 +246,22 @@ def income_plot(
         lw = 0.2
 
     fig, ax = generate_figure(*zone_bounds_resource.zones[context.partition_key])
-    df.plot(column="income_pc", scheme="natural_breaks", k=5, cmap="cividis", legend=True, ax=ax, edgecolor="k", lw=lw, autolim=False, aspect=None)
-    update_categorical_legend(ax, title="Ingreso anual per cápita\n(miles de USD)", fmt=".2f")
-    
+    df.plot(
+        column="income_pc",
+        scheme="natural_breaks",
+        k=5,
+        cmap="cividis",
+        legend=True,
+        ax=ax,
+        edgecolor="k",
+        lw=lw,
+        autolim=False,
+        aspect=None,
+    )
+    update_categorical_legend(
+        ax, title="Ingreso anual per cápita\n(miles de USD)", fmt=".2f"
+    )
+
     return fig
 
 
@@ -245,7 +275,7 @@ def jobs_plot(
     context: AssetExecutionContext,
     path_resource: PathResource,
     zone_bounds_resource: ZonesMapListResource,
-    zone_linewidths_resource: ZonesMapFloatResource
+    zone_linewidths_resource: ZonesMapFloatResource,
 ) -> Figure:
     jobs_path = Path(path_resource.jobs_path)
 
@@ -261,17 +291,31 @@ def jobs_plot(
         lw = 0.2
 
     fig, ax = generate_figure(*zone_bounds_resource.zones[context.partition_key])
-    df.plot(column="num_empleos", scheme="natural_breaks", k=5, cmap="cividis", legend=True, ax=ax, edgecolor="k", lw=lw, autolim=False, aspect=None)
+    df.plot(
+        column="num_empleos",
+        scheme="natural_breaks",
+        k=5,
+        cmap="cividis",
+        legend=True,
+        ax=ax,
+        edgecolor="k",
+        lw=lw,
+        autolim=False,
+        aspect=None,
+    )
     update_categorical_legend(ax, title="Número de empleos", fmt=",.0f")
-    
-    return fig
 
+    return fig
 
 
 @asset(
     name="built_mun",
     key_prefix="plot",
-    ins={"data_and_transform": AssetIn(key="built_mun", input_manager_key="reprojected_raster_manager")},
+    ins={
+        "data_and_transform": AssetIn(
+            key="built_mun", input_manager_key="reprojected_raster_manager"
+        )
+    },
     partitions_def=mun_partitions,
     io_manager_key="plot_manager",
 )
@@ -288,5 +332,5 @@ def built_plot_mun(
     fig, ax = generate_figure(*mun_bounds_resource.zones[context.partition_key])
     rio.plot.show(data, transform=transform, ax=ax, cmap=cmap)
     add_built_legend(cmap, ax=ax)
-    
+
     return fig

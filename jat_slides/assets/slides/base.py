@@ -199,10 +199,7 @@ def add_built_slide(
 
 
 def add_single_picture_slide(
-    pres: PresentationType,
-    layout: SlideLayout,
-    *,
-    picture_path: Path
+    pres: PresentationType, layout: SlideLayout, *, picture_path: Path
 ):
     income_slide = pres.slides.add_slide(layout)
     if picture_path.exists():
@@ -211,8 +208,8 @@ def add_single_picture_slide(
 
 
 def generate_slides(
-    *, 
-    id_list: list[str], 
+    *,
+    id_list: list[str],
     name_map: ZonesMapStrResource,
     lost_pop_after_2000: dict[str, float],
     built_after_2000: dict[str, float],
@@ -222,7 +219,7 @@ def generate_slides(
     pg_figure_paths: dict[str, Path],
     built_figure_paths: dict[str, Path],
     income_figure_paths: dict[str, Path],
-    jobs_figure_paths: dict[str, Path]
+    jobs_figure_paths: dict[str, Path],
 ):
     pres = Presentation("./template.pptx")
     layouts = find_layouts(pres)
@@ -246,10 +243,15 @@ def generate_slides(
             picture_path=built_figure_paths[zone],
         )
 
-        add_single_picture_slide(pres, layouts["income"], picture_path=income_figure_paths[zone])
-        add_single_picture_slide(pres, layouts["jobs"], picture_path=jobs_figure_paths[zone])
+        add_single_picture_slide(
+            pres, layouts["income"], picture_path=income_figure_paths[zone]
+        )
+        add_single_picture_slide(
+            pres, layouts["jobs"], picture_path=jobs_figure_paths[zone]
+        )
 
     return pres
+
 
 @asset(
     ins={
@@ -269,7 +271,7 @@ def generate_slides(
         ),
         "jobs_figure_paths": AssetIn(
             key=["plot", "jobs"], input_manager_key="path_manager"
-        )
+        ),
     },
     io_manager_key="presentation_manager",
 )
@@ -284,11 +286,11 @@ def slides(
     pg_figure_paths: dict[str, Path],
     built_figure_paths: dict[str, Path],
     income_figure_paths: dict[str, Path],
-    jobs_figure_paths: dict[str, Path]
+    jobs_figure_paths: dict[str, Path],
 ) -> PresentationType:
     return generate_slides(
-        id_list=wanted_zones_resource.zones, 
-        name_map=zone_names_resource, 
+        id_list=wanted_zones_resource.zones,
+        name_map=zone_names_resource,
         lost_pop_after_2000=lost_pop_after_2000,
         built_after_2000=built_after_2000,
         pop_df=pop_df,
@@ -297,7 +299,7 @@ def slides(
         pg_figure_paths=pg_figure_paths,
         built_figure_paths=built_figure_paths,
         income_figure_paths=income_figure_paths,
-        jobs_figure_paths=jobs_figure_paths
+        jobs_figure_paths=jobs_figure_paths,
     )
 
 
@@ -319,7 +321,7 @@ def slides(
         ),
         "jobs_figure_paths": AssetIn(
             key=["plot", "jobs"], input_manager_key="path_manager"
-        )
+        ),
     },
     io_manager_key="presentation_manager",
 )
@@ -334,11 +336,11 @@ def slides_mun(
     pg_figure_paths: dict[str, Path],
     built_figure_paths: dict[str, Path],
     income_figure_paths: dict[str, Path],
-    jobs_figure_paths: dict[str, Path]
+    jobs_figure_paths: dict[str, Path],
 ) -> PresentationType:
     return generate_slides(
         id_list=wanted_muns_resource.zones,
-        name_map=mun_names_resource, 
+        name_map=mun_names_resource,
         lost_pop_after_2000=lost_pop_after_2000,
         built_after_2000=built_after_2000,
         pop_df=pop_df,
@@ -347,5 +349,5 @@ def slides_mun(
         pg_figure_paths=pg_figure_paths,
         built_figure_paths=built_figure_paths,
         income_figure_paths=income_figure_paths,
-        jobs_figure_paths=jobs_figure_paths
+        jobs_figure_paths=jobs_figure_paths,
     )

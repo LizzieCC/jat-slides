@@ -26,7 +26,9 @@ def agebs_factory(year: int):
     ) -> gpd.GeoDataFrame:
         zone = context.partition_key
 
-        agebs_path = Path(path_resource.pg_path) / f"zone_agebs/{infix}/{year}/{zone}.gpkg"
+        agebs_path = (
+            Path(path_resource.pg_path) / f"zone_agebs/{infix}/{year}/{zone}.gpkg"
+        )
         df = gpd.read_file(agebs_path).to_crs("ESRI:54009")
         df["geometry"] = df["geometry"].make_valid()
         return df

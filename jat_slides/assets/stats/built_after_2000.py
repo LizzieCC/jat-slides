@@ -18,7 +18,7 @@ def calculate_frac_built(built_data: tuple[np.ndarray, Affine]) -> float:
     ins={"built_data": AssetIn("built")},
     partitions_def=zone_partitions,
     io_manager_key="text_manager",
-    group_name="stats"
+    group_name="stats",
 )
 def built_after_2000(built_data: tuple[np.ndarray, Affine]) -> float:
     return calculate_frac_built(built_data)
@@ -30,7 +30,7 @@ def built_after_2000(built_data: tuple[np.ndarray, Affine]) -> float:
     ins={"built_data": AssetIn("built_mun")},
     partitions_def=mun_partitions,
     io_manager_key="text_manager",
-    group_name="stats_mun"
+    group_name="stats_mun",
 )
 def built_after_2000_mun(built_data: tuple[np.ndarray, Affine]) -> float:
     return calculate_frac_built(built_data)
