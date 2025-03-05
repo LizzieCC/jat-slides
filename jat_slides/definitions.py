@@ -42,7 +42,8 @@ path_resource = PathResource(
     pg_path=EnvVar("POPULATION_GRIDS_PATH"),
     out_path=EnvVar("OUT_PATH"),
     figure_path=EnvVar("FIGURE_PATH"),
-    framework_path=EnvVar("FRAMEWORK_PATH"),
+    segregation_path=EnvVar("SEGREGATION_PATH"),
+    jobs_path=EnvVar("JOBS_PATH")
 )
 
 with open("./config.toml", "r", encoding="utf8") as f:

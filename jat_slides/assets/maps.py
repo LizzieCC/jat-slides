@@ -1,4 +1,5 @@
-import rasterio.plot
+import json
+import rasterio.plot # pylint: disable=unused-import
 
 import contextily as cx
 import geopandas as gpd
@@ -17,6 +18,7 @@ from jat_slides.resources import (
     ZonesMapListResource,
     ZonesMapFloatResource,
 )
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 from pathlib import Path
@@ -63,6 +65,18 @@ def generate_figure(xmin: float, ymin: float, xmax: float, ymax: float):
 
     cx.add_basemap(ax, source=cx.providers.CartoDB.Positron, crs="EPSG:4326")
     return fig, ax
+
+
+def update_categorical_legend(ax: Axes, title: str, fmt: str) -> None:
+    leg = ax.get_legend()
+    leg.set_title(title)
+    leg.set_alignment("left")
+
+    for text_obj in leg.get_texts():
+        start, end = text_obj.get_text().split(",")
+        start = float(start.strip())
+        end = float(end.strip())
+        text_obj.set_text(f"{start:{fmt}} - {end:{fmt}}")
 
 
 @asset(
@@ -184,6 +198,74 @@ def built_plot(
     add_built_legend(cmap, ax=ax)
     
     return fig
+
+
+@asset(
+    name="income",
+    key_prefix="plot",
+    partitions_def=zone_partitions,
+    io_manager_key="plot_manager",
+)
+def income_plot(
+    context: AssetExecutionContext,
+    path_resource: PathResource,
+    zone_bounds_resource: ZonesMapListResource,
+    zone_linewidths_resource: ZonesMapFloatResource
+) -> Figure:
+    segregation_path = Path(path_resource.segregation_path)
+
+    with open(segregation_path / "short_to_long_map.json", "r", encoding="utf8") as f:
+        long_to_short_map = {value: key for key, value in json.load(f).items()}
+
+    df = (
+        gpd.read_file(segregation_path / f"incomes/{long_to_short_map[context.partition_key]}.gpkg")
+        .dropna(subset=["income_pc"])
+        .to_crs("EPSG:4326")
+    )
+
+    if context.partition_key in zone_linewidths_resource.zones:
+        lw = zone_linewidths_resource.zones[context.partition_key]
+    else:
+        lw = 0.2
+
+    fig, ax = generate_figure(*zone_bounds_resource.zones[context.partition_key])
+    df.plot(column="income_pc", scheme="natural_breaks", k=5, cmap="cividis", legend=True, ax=ax, edgecolor="k", lw=lw, autolim=False, aspect=None)
+    update_categorical_legend(ax, title="Ingreso anual per cápita\n(miles de USD)", fmt=".2f")
+    
+    return fig
+
+
+@asset(
+    name="jobs",
+    key_prefix="plot",
+    partitions_def=zone_partitions,
+    io_manager_key="plot_manager",
+)
+def jobs_plot(
+    context: AssetExecutionContext,
+    path_resource: PathResource,
+    zone_bounds_resource: ZonesMapListResource,
+    zone_linewidths_resource: ZonesMapFloatResource
+) -> Figure:
+    jobs_path = Path(path_resource.jobs_path)
+
+    df = (
+        gpd.read_file(jobs_path / f"{context.partition_key}.geojson")
+        .dropna(subset=["num_empleos"])
+        .to_crs("EPSG:4326")
+    )
+
+    if context.partition_key in zone_linewidths_resource.zones:
+        lw = zone_linewidths_resource.zones[context.partition_key]
+    else:
+        lw = 0.2
+
+    fig, ax = generate_figure(*zone_bounds_resource.zones[context.partition_key])
+    df.plot(column="num_empleos", scheme="natural_breaks", k=5, cmap="cividis", legend=True, ax=ax, edgecolor="k", lw=lw, autolim=False, aspect=None)
+    update_categorical_legend(ax, title="Número de empleos", fmt=",.0f")
+    
+    return fig
+
 
 
 @asset(
