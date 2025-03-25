@@ -1,13 +1,13 @@
+import dagster as dg
 import geopandas as gpd
 
-from dagster import asset, AssetExecutionContext
 from jat_slides.partitions import zone_partitions
 from jat_slides.resources import PathResource
 from pathlib import Path
 from typing import assert_never
 
 
-def agebs_factory(year: int):
+def agebs_factory(year: int) -> dg.AssetsDefinition:
     if year in (1990, 2000):
         infix = "translated"
     elif year in (2010, 2020):
@@ -15,14 +15,14 @@ def agebs_factory(year: int):
     else:
         assert_never(year)
 
-    @asset(
+    @dg.asset(
         name=str(year),
         key_prefix="agebs",
         partitions_def=zone_partitions,
         io_manager_key="gpkg_manager",
     )
     def _asset(
-        context: AssetExecutionContext, path_resource: PathResource
+        context: dg.AssetExecutionContext, path_resource: PathResource
     ) -> gpd.GeoDataFrame:
         zone = context.partition_key
 

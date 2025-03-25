@@ -3,6 +3,7 @@ import pandas as pd
 
 from dagster import asset, AssetIn
 from jat_slides.partitions import mun_partitions, zone_partitions
+from typing import assert_never
 
 
 def calculate_lost_pop(
@@ -20,45 +21,41 @@ def calculate_lost_pop(
     return pd.DataFrame(pops)
 
 
-@asset(
-    ins={
-        "agebs_1990": AssetIn(key=["agebs", "1990"]),
-        "agebs_2000": AssetIn(key=["agebs", "2000"]),
-        "agebs_2010": AssetIn(key=["agebs", "2010"]),
-        "agebs_2020": AssetIn(key=["agebs", "2020"]),
-    },
-    name="population",
-    key_prefix="stats",
-    partitions_def=zone_partitions,
-    io_manager_key="csv_manager",
-    group_name="stats",
-)
-def population(
-    agebs_1990: gpd.GeoDataFrame,
-    agebs_2000: gpd.GeoDataFrame,
-    agebs_2010: gpd.GeoDataFrame,
-    agebs_2020: gpd.GeoDataFrame,
-) -> pd.DataFrame:
-    return calculate_lost_pop(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+def population_factory(suffix: str):
+    if suffix == "":
+        prefix = "agebs"
+        partitions_def = zone_partitions
+    elif suffix == "_mun":
+        prefix = "muns"
+        partitions_def = mun_partitions
+    elif suffix == "_trimmed":
+        prefix = "agebs_trimmed"
+        partitions_def = zone_partitions
+    else:
+        assert_never(suffix)
+
+    @asset(
+        ins={
+            "agebs_1990": AssetIn(key=[prefix, "1990"]),
+            "agebs_2000": AssetIn(key=[prefix, "2000"]),
+            "agebs_2010": AssetIn(key=[prefix, "2010"]),
+            "agebs_2020": AssetIn(key=[prefix, "2020"]),
+        },
+        name="population",
+        key_prefix=f"stats{suffix}",
+        partitions_def=partitions_def,
+        io_manager_key="csv_manager",
+        group_name=f"stats{suffix}",
+    )
+    def _asset(
+        agebs_1990: gpd.GeoDataFrame,
+        agebs_2000: gpd.GeoDataFrame,
+        agebs_2010: gpd.GeoDataFrame,
+        agebs_2020: gpd.GeoDataFrame,
+    ) -> pd.DataFrame:
+        return calculate_lost_pop(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+
+    return _asset
 
 
-@asset(
-    ins={
-        "agebs_1990": AssetIn(key=["muns", "1990"]),
-        "agebs_2000": AssetIn(key=["muns", "2000"]),
-        "agebs_2010": AssetIn(key=["muns", "2010"]),
-        "agebs_2020": AssetIn(key=["muns", "2020"]),
-    },
-    name="population",
-    key_prefix="stats_mun",
-    partitions_def=mun_partitions,
-    io_manager_key="csv_manager",
-    group_name="stats_mun",
-)
-def population_mun(
-    agebs_1990: gpd.GeoDataFrame,
-    agebs_2000: gpd.GeoDataFrame,
-    agebs_2010: gpd.GeoDataFrame,
-    agebs_2020: gpd.GeoDataFrame,
-) -> pd.DataFrame:
-    return calculate_lost_pop(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+dassets = [population_factory(suffix) for suffix in ["", "_mun", "_trimmed"]]

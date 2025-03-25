@@ -1,11 +1,6 @@
-import toml
+import dagster as dg
 
-from dagster import (
-    Definitions,
-    EnvVar,
-    load_assets_from_modules,
-)
-from jat_slides.assets import agebs, built, maps, muns, slides, stats
+from jat_slides.assets import agebs, built, cells, maps, muns, slides, stats
 from jat_slides.managers import (
     DataFrameIOManager,
     PathIOManager,
@@ -16,52 +11,23 @@ from jat_slides.managers import (
     TextIOManager,
 )
 from jat_slides.resources import (
-    PathResource,
-    ZonesMapListResource,
-    ZonesMapStrResource,
-    ZonesListResource,
-    ZonesMapFloatResource,
+    path_resource,
+    wanted_zones_resource,
+    zone_names_resource,
+    zone_bounds_resource,
+    zone_linewidths_resource,
+    wanted_muns_resource,
+    mun_names_resource,
+    mun_bounds_resource,
+    trimmed_bounds_resource,
+    wanted_trimmed_resource,
 )
-
-
-# Assets
-ageb_assets = load_assets_from_modules([agebs], group_name="agebs")
-built_assets = load_assets_from_modules([built], group_name="built_rasters")
-map_assets = load_assets_from_modules([maps], group_name="maps")
-muns_assets = load_assets_from_modules([muns], group_name="muns")
-
-built_area_assets = load_assets_from_modules([stats.built_area])
-built_urban_area_assets = load_assets_from_modules([stats.built_urban_area])
-built_after_2000_assets = load_assets_from_modules([stats.built_after_2000])
-lost_pop_after_2000_assets = load_assets_from_modules([stats.lost_pop_after_2000])
-population_assets = load_assets_from_modules([stats.population])
-
-# Resources
-path_resource = PathResource(
-    ghsl_path=EnvVar("GHSL_PATH"),
-    pg_path=EnvVar("POPULATION_GRIDS_PATH"),
-    out_path=EnvVar("OUT_PATH"),
-    figure_path=EnvVar("FIGURE_PATH"),
-    segregation_path=EnvVar("SEGREGATION_PATH"),
-    jobs_path=EnvVar("JOBS_PATH"),
-)
-
-with open("./config.toml", "r", encoding="utf8") as f:
-    config = toml.load(f)
-
-wanted_zones_resource = ZonesListResource(zones=config["wanted_zones"])
-zone_names_resource = ZonesMapStrResource(zones=config["zone_names"])
-zone_bounds_resource = ZonesMapListResource(zones=config["bounds"])
-zone_linewidths_resource = ZonesMapFloatResource(zones=config["linewidths"])
-
-wanted_muns_resource = ZonesListResource(zones=config["wanted_muns"])
-mun_names_resource = ZonesMapStrResource(zones=config["mun_names"])
-mun_bounds_resource = ZonesMapListResource(zones=config["bounds_mun"])
 
 
 # Managers
 csv_manager = DataFrameIOManager(path_resource=path_resource, extension=".csv")
 gpkg_manager = DataFrameIOManager(path_resource=path_resource, extension=".gpkg")
+memory_manager = dg.InMemoryIOManager()
 raster_manager = RasterIOManager(path_resource=path_resource, extension=".tif")
 reprojected_raster_manager = ReprojectedRasterIOManager(
     path_resource=path_resource, extension=".tif", crs="EPSG:4326"
@@ -75,18 +41,13 @@ text_manager = TextIOManager(path_resource=path_resource, extension=".txt")
 
 
 # Definitions
-defs = Definitions.merge(
-    Definitions(
+defs = dg.Definitions.merge(
+    dg.Definitions(
         assets=(
-            ageb_assets
-            + built_assets
-            + built_after_2000_assets
-            + built_area_assets
-            + built_urban_area_assets
-            + lost_pop_after_2000_assets
-            + population_assets
-            + map_assets
-            + muns_assets
+            dg.load_assets_from_modules([agebs], group_name="agebs")
+            + dg.load_assets_from_modules([built], group_name="built_rasters")
+            + dg.load_assets_from_modules([muns], group_name="muns")
+            + dg.load_assets_from_modules([cells], group_name="cells")
         ),
         resources={
             "path_resource": path_resource,
@@ -96,6 +57,7 @@ defs = Definitions.merge(
             "zone_linewidths_resource": zone_linewidths_resource,
             "csv_manager": csv_manager,
             "gpkg_manager": gpkg_manager,
+            "memory_manager": memory_manager,
             "presentation_manager": presentation_manger,
             "raster_manager": raster_manager,
             "reprojected_raster_manager": reprojected_raster_manager,
@@ -105,7 +67,12 @@ defs = Definitions.merge(
             "wanted_muns_resource": wanted_muns_resource,
             "mun_names_resource": mun_names_resource,
             "mun_bounds_resource": mun_bounds_resource,
+            "trimmed_bounds_resource": trimmed_bounds_resource,
+            "wanted_trimmed_resource": wanted_trimmed_resource,
         },
     ),
+    agebs.defs,
+    maps.defs,
     slides.defs,
+    stats.defs,
 )

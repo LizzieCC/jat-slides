@@ -2,25 +2,25 @@
 import rasterio.mask
 import shapely
 
+import dagster as dg
 import geopandas as gpd
 import numpy as np
 import rasterio as rio
 
 from affine import Affine
-from dagster import asset, graph, graph_asset, op, AssetIn, OpExecutionContext, Out
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
 from pathlib import Path
-from shapely import Geometry
 
 
 YEARS = range(1975, 2021, 5)
 
 
-def load_built_rasters_factory(year: int):
-    @op(name=f"load_built_rasters_{year}", out={"data": Out(), "transform": Out()})
+def load_built_rasters_factory(year: int) -> dg.OpDefinition:
+    @dg.op(
+        name=f"load_built_rasters_{year}", out={"data": dg.Out(), "transform": dg.Out()}
+    )
     def _op(path_resource: PathResource, bounds: list) -> tuple[np.ndarray, Affine]:
-        print(bounds)
         fpath = Path(path_resource.ghsl_path) / f"BUILT_100/{year}.tif"
         with rio.open(fpath, nodata=65535) as ds:
             data, transform = rio.mask.mask(ds, bounds, crop=True, nodata=0)
@@ -40,7 +40,7 @@ def load_built_rasters_factory(year: int):
 load_built_rasters_ops = {year: load_built_rasters_factory(year) for year in YEARS}
 
 
-@op(out=Out(io_manager_key="raster_manager"))
+@dg.op(out=dg.Out(io_manager_key="raster_manager"))
 def reduce_rasters(
     rasters: list[np.ndarray], transforms: list[Affine]
 ) -> tuple[np.ndarray, Affine]:
@@ -51,7 +51,7 @@ def reduce_rasters(
     return arr, transforms[0]
 
 
-@op
+@dg.op
 def get_total_bounds(
     agebs_1990: gpd.GeoDataFrame,
     agebs_2000: gpd.GeoDataFrame,
@@ -69,7 +69,7 @@ def get_total_bounds(
     return [shapely.union_all(geoms)]
 
 
-@graph
+@dg.graph
 def built_graph(
     agebs_1990: gpd.GeoDataFrame,
     agebs_2000: gpd.GeoDataFrame,
@@ -89,13 +89,13 @@ def built_graph(
     return out
 
 
-@graph_asset(
+@dg.graph_asset(
     name="built",
     ins={
-        "agebs_1990": AssetIn(key=["agebs", "1990"]),
-        "agebs_2000": AssetIn(key=["agebs", "2000"]),
-        "agebs_2010": AssetIn(key=["agebs", "2010"]),
-        "agebs_2020": AssetIn(key=["agebs", "2020"]),
+        "agebs_1990": dg.AssetIn(key=["agebs", "1990"]),
+        "agebs_2000": dg.AssetIn(key=["agebs", "2000"]),
+        "agebs_2010": dg.AssetIn(key=["agebs", "2010"]),
+        "agebs_2020": dg.AssetIn(key=["agebs", "2020"]),
     },
     partitions_def=zone_partitions,
 )
@@ -108,17 +108,36 @@ def built(
     return built_graph(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
 
 
-@graph_asset(
+@dg.graph_asset(
     name="built_mun",
     ins={
-        "agebs_1990": AssetIn(key=["muns", "1990"]),
-        "agebs_2000": AssetIn(key=["muns", "2000"]),
-        "agebs_2010": AssetIn(key=["muns", "2010"]),
-        "agebs_2020": AssetIn(key=["muns", "2020"]),
+        "agebs_1990": dg.AssetIn(key=["muns", "1990"]),
+        "agebs_2000": dg.AssetIn(key=["muns", "2000"]),
+        "agebs_2010": dg.AssetIn(key=["muns", "2010"]),
+        "agebs_2020": dg.AssetIn(key=["muns", "2020"]),
     },
     partitions_def=mun_partitions,
 )
 def built_mun(
+    agebs_1990: gpd.GeoDataFrame,
+    agebs_2000: gpd.GeoDataFrame,
+    agebs_2010: gpd.GeoDataFrame,
+    agebs_2020: gpd.GeoDataFrame,
+) -> tuple[np.ndarray, Affine]:
+    return built_graph(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+
+
+@dg.graph_asset(
+    name="built_trimmed",
+    ins={
+        "agebs_1990": dg.AssetIn(key=["agebs_trimmed", "1990"]),
+        "agebs_2000": dg.AssetIn(key=["agebs_trimmed", "2000"]),
+        "agebs_2010": dg.AssetIn(key=["agebs_trimmed", "2010"]),
+        "agebs_2020": dg.AssetIn(key=["agebs_trimmed", "2020"]),
+    },
+    partitions_def=zone_partitions,
+)
+def built_trimmed(
     agebs_1990: gpd.GeoDataFrame,
     agebs_2000: gpd.GeoDataFrame,
     agebs_2010: gpd.GeoDataFrame,

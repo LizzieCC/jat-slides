@@ -17,6 +17,7 @@ dagster-webserver = "^1.9.1"
 babel = "^2.16.0"
 toml = "^0.10.2"
 mapclassify = "^2.8.1"
+jenkspy = "^0.4.1"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.0.1"

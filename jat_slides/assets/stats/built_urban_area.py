@@ -3,6 +3,7 @@ import pandas as pd
 
 from dagster import asset, AssetIn
 from jat_slides.partitions import mun_partitions, zone_partitions
+from typing import assert_never
 
 
 def calculate_built_urban_area(
@@ -21,45 +22,43 @@ def calculate_built_urban_area(
     return out
 
 
-@asset(
-    name="built_urban_area",
-    key_prefix="stats",
-    ins={
-        "agebs_1990": AssetIn(key=["agebs", "1990"]),
-        "agebs_2000": AssetIn(key=["agebs", "2000"]),
-        "agebs_2010": AssetIn(key=["agebs", "2010"]),
-        "agebs_2020": AssetIn(key=["agebs", "2020"]),
-    },
-    partitions_def=zone_partitions,
-    io_manager_key="csv_manager",
-    group_name="stats",
-)
-def built_urban_area(
-    agebs_1990: gpd.GeoDataFrame,
-    agebs_2000: gpd.GeoDataFrame,
-    agebs_2010: gpd.GeoDataFrame,
-    agebs_2020: gpd.GeoDataFrame,
-) -> pd.DataFrame:
-    return calculate_built_urban_area(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+def built_urban_area_factory(suffix: str):
+    if suffix == "":
+        prefix = "agebs"
+        partitions_def = zone_partitions
+    elif suffix == "_mun":
+        prefix = "muns"
+        partitions_def = mun_partitions
+    elif suffix == "_trimmed":
+        prefix = "agebs_trimmed"
+        partitions_def = zone_partitions
+    else:
+        assert_never(suffix)
+
+    @asset(
+        name="built_urban_area",
+        key_prefix=f"stats{suffix}",
+        ins={
+            "agebs_1990": AssetIn(key=[prefix, "1990"]),
+            "agebs_2000": AssetIn(key=[prefix, "2000"]),
+            "agebs_2010": AssetIn(key=[prefix, "2010"]),
+            "agebs_2020": AssetIn(key=[prefix, "2020"]),
+        },
+        partitions_def=partitions_def,
+        group_name=f"stats{suffix}",
+        io_manager_key="csv_manager",
+    )
+    def _asset(
+        agebs_1990: gpd.GeoDataFrame,
+        agebs_2000: gpd.GeoDataFrame,
+        agebs_2010: gpd.GeoDataFrame,
+        agebs_2020: gpd.GeoDataFrame,
+    ) -> pd.DataFrame:
+        return calculate_built_urban_area(
+            agebs_1990, agebs_2000, agebs_2010, agebs_2020
+        )
+
+    return _asset
 
 
-@asset(
-    name="built_urban_area",
-    key_prefix="stats_mun",
-    ins={
-        "agebs_1990": AssetIn(key=["muns", "1990"]),
-        "agebs_2000": AssetIn(key=["muns", "2000"]),
-        "agebs_2010": AssetIn(key=["muns", "2010"]),
-        "agebs_2020": AssetIn(key=["muns", "2020"]),
-    },
-    partitions_def=mun_partitions,
-    io_manager_key="csv_manager",
-    group_name="stats_mun",
-)
-def built_urban_area_mun(
-    agebs_1990: gpd.GeoDataFrame,
-    agebs_2000: gpd.GeoDataFrame,
-    agebs_2010: gpd.GeoDataFrame,
-    agebs_2020: gpd.GeoDataFrame,
-) -> pd.DataFrame:
-    return calculate_built_urban_area(agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+dassets = [built_urban_area_factory(suffix) for suffix in ("", "_mun", "_trimmed")]
