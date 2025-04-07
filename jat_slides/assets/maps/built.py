@@ -8,13 +8,29 @@ import numpy as np
 from affine import Affine
 from jat_slides.assets.maps.common import (
     generate_figure,
-    add_built_legend,
     get_bounds_base,
     get_bounds_mun,
     get_bounds_trimmed,
 )
 from jat_slides.partitions import mun_partitions, zone_partitions
 from matplotlib.figure import Figure
+from matplotlib.patches import Patch
+
+
+def add_built_legend(cmap, *, ax):
+    patches = []
+    for i, year in enumerate(range(1975, 2021, 5)):
+        if year == 1975:
+            label = "1975 o antes"
+        else:
+            label = str(year)
+        patches.append(Patch(color=cmap(i), label=label))
+
+    ax.legend(
+        handles=patches,
+        title="Año de construcción",
+        alignment="left",
+    )
 
 
 @dg.op(

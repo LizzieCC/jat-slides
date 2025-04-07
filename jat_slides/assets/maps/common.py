@@ -44,7 +44,6 @@ def add_pop_legend(bounds, *, ax, cmap: mcol.Colormap):
 
     ax.legend(
         handles=patches,
-        loc="lower right",
         title="Cambio de población\n(2020 - 2000)",
         alignment="left",
     )
@@ -87,23 +86,6 @@ def get_bounds_trimmed(
     context: dg.OpExecutionContext, trimmed_bounds_resource: ZonesMapListResource
 ) -> tuple[float, float, float, float]:
     return tuple(trimmed_bounds_resource.zones[context.partition_key])
-
-
-def add_built_legend(cmap, *, ax):
-    patches = []
-    for i, year in enumerate(range(1975, 2021, 5)):
-        if year == 1975:
-            label = "1975 o antes"
-        else:
-            label = str(year)
-        patches.append(Patch(color=cmap(i), label=label))
-
-    ax.legend(
-        handles=patches,
-        loc="lower right",
-        title="Año de construcción",
-        alignment="left",
-    )
 
 
 def update_categorical_legend(

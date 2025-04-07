@@ -42,6 +42,7 @@ zone_linewidths_resource = ZonesMapFloatResource(zones=config["linewidths"])
 wanted_muns_resource = ZonesListResource(zones=config["wanted_muns"])
 mun_names_resource = ZonesMapStrResource(zones=config["mun_names"])
 mun_bounds_resource = ZonesMapListResource(zones=config["bounds_mun"])
+mun_legend_pos_resource = ZonesMapStrResource(zones=config["legend_pos_mun"])
 
 wanted_trimmed_resource = ZonesListResource(zones=config["wanted_trimmed"])
 trimmed_bounds_resource = ZonesMapListResource(zones=config["bounds_trimmed"])
@@ -55,4 +56,21 @@ path_resource = PathResource(
     segregation_path=dg.EnvVar("SEGREGATION_PATH"),
     jobs_path=dg.EnvVar("JOBS_PATH"),
     trimmed_path=dg.EnvVar("TRIMMED_PATH"),
+)
+
+
+defs = dg.Definitions(
+    resources={
+        "path_resource": path_resource,
+        "wanted_zones_resource": wanted_zones_resource,
+        "zone_names_resource": zone_names_resource,
+        "zone_bounds_resource": zone_bounds_resource,
+        "zone_linewidths_resource": zone_linewidths_resource,
+        "wanted_muns_resource": wanted_muns_resource,
+        "mun_names_resource": mun_names_resource,
+        "mun_bounds_resource": mun_bounds_resource,
+        "trimmed_bounds_resource": trimmed_bounds_resource,
+        "wanted_trimmed_resource": wanted_trimmed_resource,
+        "mun_legend_pos_resource": mun_legend_pos_resource,
+    },
 )

@@ -1,10 +1,10 @@
 import datetime
 
+import dagster as dg
 import numpy as np
 import pandas as pd
 
 from babel.dates import format_date
-from jat_slides.resources import ZonesListResource, ZonesMapStrResource
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.presentation import Presentation as PresentationType
@@ -15,6 +15,9 @@ from pptx.util import Cm, Pt
 from dagster import asset, AssetIn
 from pathlib import Path
 from typing import Optional
+
+from jat_slides.partitions import zone_partitions
+from jat_slides.resources import ZonesListResource, ZonesMapStrResource
 
 
 def find_layouts(pres: PresentationType) -> dict[str, SlideLayout]:
@@ -256,6 +259,47 @@ def generate_slides(
     return pres
 
 
+def generate_single_slide(
+    *,
+    name: str,
+    lost_pop_after_2000: float,
+    built_after_2000: float,
+    pop_df: pd.DataFrame,
+    built_df: pd.DataFrame,
+    built_urban_df: pd.DataFrame,
+    built_figure_path: Path,
+    pg_figure_path: Path,
+    income_figure_path: Path | None,
+    jobs_figure_path: Path | None,
+):
+    pres = Presentation("./template.pptx")
+    layouts = find_layouts(pres)
+
+    add_section_slide(pres, layouts["section"], name)
+
+    add_lost_pop_slide(pres, layouts["pop"], lost_pop_after_2000, pg_figure_path)
+
+    add_built_slide(
+        pres,
+        layouts["built"],
+        built_after_2000,
+        pop_df=pop_df,
+        built_area_df=built_df,
+        urban_area_df=built_urban_df,
+        picture_path=built_figure_path,
+    )
+
+    if income_figure_path is not None:
+        add_single_picture_slide(
+            pres, layouts["income"], picture_path=income_figure_path
+        )
+
+    if jobs_figure_path is not None:
+        add_single_picture_slide(pres, layouts["jobs"], picture_path=jobs_figure_path)
+
+    return pres
+
+
 @asset(
     ins={
         "lost_pop_after_2000": AssetIn(key=["stats", "lost_pop_after_2000"]),
@@ -263,47 +307,60 @@ def generate_slides(
         "pop_df": AssetIn(key=["stats", "population"]),
         "built_df": AssetIn(key=["stats", "built_area"]),
         "built_urban_df": AssetIn(key=["stats", "built_urban_area"]),
-        "pg_figure_paths": AssetIn(
+        "pg_figure_path": AssetIn(
             key=["plot", "population_grid"], input_manager_key="path_manager"
         ),
-        "built_figure_paths": AssetIn(
+        "built_figure_path": AssetIn(
             key=["plot", "built"], input_manager_key="path_manager"
         ),
-        "income_figure_paths": AssetIn(
+        "income_figure_path": AssetIn(
             key=["plot", "income"], input_manager_key="path_manager"
         ),
-        "jobs_figure_paths": AssetIn(
+        "jobs_figure_path": AssetIn(
             key=["plot", "jobs"], input_manager_key="path_manager"
         ),
     },
+    partitions_def=zone_partitions,
     io_manager_key="presentation_manager",
 )
 def slides(
-    wanted_zones_resource: ZonesListResource,
+    context: dg.AssetExecutionContext,
     zone_names_resource: ZonesMapStrResource,
-    lost_pop_after_2000: dict[str, float],
-    built_after_2000: dict[str, float],
-    pop_df: dict[str, pd.DataFrame],
-    built_df: dict[str, pd.DataFrame],
-    built_urban_df: dict[str, pd.DataFrame],
-    pg_figure_paths: dict[str, Path],
-    built_figure_paths: dict[str, Path],
-    income_figure_paths: dict[str, Path],
-    jobs_figure_paths: dict[str, Path],
+    lost_pop_after_2000: float,
+    built_after_2000: float,
+    pop_df: pd.DataFrame,
+    built_df: pd.DataFrame,
+    built_urban_df: pd.DataFrame,
+    pg_figure_path: Path,
+    built_figure_path: Path,
+    income_figure_path: Path,
+    jobs_figure_path: Path,
 ) -> PresentationType:
-    return generate_slides(
-        id_list=wanted_zones_resource.zones,
-        name_map=zone_names_resource,
+    return generate_single_slide(
+        name=zone_names_resource.zones[context.partition_key],
         lost_pop_after_2000=lost_pop_after_2000,
         built_after_2000=built_after_2000,
         pop_df=pop_df,
         built_df=built_df,
         built_urban_df=built_urban_df,
-        pg_figure_paths=pg_figure_paths,
-        built_figure_paths=built_figure_paths,
-        income_figure_paths=income_figure_paths,
-        jobs_figure_paths=jobs_figure_paths,
+        built_figure_path=built_figure_path,
+        pg_figure_path=pg_figure_path,
+        income_figure_path=income_figure_path,
+        jobs_figure_path=jobs_figure_path,
     )
+    # return generate_slides(
+    #     id_list=wanted_zones_resource.zones,
+    #     name_map=zone_names_resource,
+    #     lost_pop_after_2000=lost_pop_after_2000,
+    #     built_after_2000=built_after_2000,
+    #     pop_df=pop_df,
+    #     built_df=built_df,
+    #     built_urban_df=built_urban_df,
+    #     pg_figure_paths=pg_figure_paths,
+    #     built_figure_paths=built_figure_paths,
+    #     income_figure_paths=income_figure_paths,
+    #     jobs_figure_paths=jobs_figure_paths,
+    # )
 
 
 @asset(
@@ -319,11 +376,17 @@ def slides(
         "built_figure_paths": AssetIn(
             key=["plot_mun", "built"], input_manager_key="path_manager"
         ),
+        "income_figure_paths": AssetIn(
+            key=["plot_mun", "income"], input_manager_key="path_manager"
+        ),
+        "jobs_figure_paths": AssetIn(
+            key=["plot_mun", "jobs"], input_manager_key="path_manager"
+        ),
     },
     io_manager_key="presentation_manager",
 )
 def slides_mun(
-    wanted_trimmed_resource: ZonesListResource,
+    wanted_muns_resource: ZonesListResource,
     mun_names_resource: ZonesMapStrResource,
     lost_pop_after_2000: dict[str, Optional[float]],
     built_after_2000: dict[str, Optional[float]],
@@ -332,9 +395,11 @@ def slides_mun(
     built_urban_df: dict[str, Optional[pd.DataFrame]],
     pg_figure_paths: dict[str, Path],
     built_figure_paths: dict[str, Path],
+    income_figure_paths: dict[str, Path],
+    jobs_figure_paths: dict[str, Path],
 ) -> PresentationType:
     return generate_slides(
-        id_list=wanted_trimmed_resource.zones,
+        id_list=wanted_muns_resource.zones,
         name_map=mun_names_resource,
         lost_pop_after_2000=lost_pop_after_2000,
         built_after_2000=built_after_2000,
@@ -343,6 +408,8 @@ def slides_mun(
         built_urban_df=built_urban_df,
         pg_figure_paths=pg_figure_paths,
         built_figure_paths=built_figure_paths,
+        income_figure_paths=income_figure_paths,
+        jobs_figure_paths=jobs_figure_paths,
     )
 
 

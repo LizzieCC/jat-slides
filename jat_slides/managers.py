@@ -1,13 +1,16 @@
 from pathlib import Path
-from pptx.presentation import Presentation
 from typing import Optional, Union
 
+import os
+
+import dagster as dg
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio as rio
 
+from pptx.presentation import Presentation
 from affine import Affine
 from dagster import (
     ConfigurableIOManager,
@@ -15,8 +18,9 @@ from dagster import (
     OutputContext,
     ResourceDependency,
 )
-from jat_slides.resources import PathResource
+from jat_slides.resources import PathResource, path_resource
 from matplotlib.figure import Figure
+from typing import assert_never
 
 
 class BaseManager(ConfigurableIOManager):
@@ -60,7 +64,7 @@ class DataFrameIOManager(BaseManager):
 
     def load_input(self, context: InputContext) -> gpd.GeoDataFrame:
         path = self._get_path(context)
-        if isinstance(path, Path):
+        if isinstance(path, os.PathLike):
             if self._is_geodataframe():
                 return gpd.read_file(path)
             else:
@@ -106,14 +110,18 @@ class RasterIOManager(BaseManager):
 
     def load_input(self, context: InputContext) -> tuple[np.ndarray, Affine]:
         path = self._get_path(context)
-        if isinstance(path, Path):
+        if isinstance(path, os.PathLike):
             data, transform = self._get_raster_and_transform(path)
             return data, transform
+
         elif isinstance(path, dict):
             out_dict = {}
             for key, fpath in path.items():
                 out_dict[key] = self._get_raster_and_transform(fpath)
             return out_dict
+
+        else:
+            assert_never(type(path))
 
 
 class ReprojectedRasterIOManager(RasterIOManager):
@@ -168,7 +176,7 @@ class PathIOManager(BaseManager):
 
     def load_input(self, context: InputContext) -> Union[Path, dict[str, Path]]:
         path = self._get_path(context)
-        if isinstance(path, Path):
+        if isinstance(path, os.PathLike):
             assert path.exists()
         return path
 
@@ -186,7 +194,7 @@ class TextIOManager(BaseManager):
         self, context: InputContext
     ) -> Union[float, dict[str, Optional[float]]]:
         fpath = self._get_path(context)
-        if isinstance(fpath, str):
+        if isinstance(fpath, os.PathLike):
             with open(fpath, "r", encoding="utf8") as f:
                 out = float(f.readline().strip("\n"))
         else:
@@ -198,3 +206,35 @@ class TextIOManager(BaseManager):
                 else:
                     out[key] = None
         return out
+
+
+# Init
+
+csv_manager = DataFrameIOManager(path_resource=path_resource, extension=".csv")
+gpkg_manager = DataFrameIOManager(path_resource=path_resource, extension=".gpkg")
+memory_manager = dg.InMemoryIOManager()
+raster_manager = RasterIOManager(path_resource=path_resource, extension=".tif")
+reprojected_raster_manager = ReprojectedRasterIOManager(
+    path_resource=path_resource, extension=".tif", crs="EPSG:4326"
+)
+presentation_manger = PresentationIOManager(
+    path_resource=path_resource, extension=".pptx"
+)
+plot_manager = PlotFigIOManager(path_resource=path_resource, extension=".jpg")
+path_manager = PathIOManager(path_resource=path_resource, extension=".jpg")
+text_manager = TextIOManager(path_resource=path_resource, extension=".txt")
+
+
+defs = dg.Definitions(
+    resources={
+        "csv_manager": csv_manager,
+        "gpkg_manager": gpkg_manager,
+        "memory_manager": memory_manager,
+        "presentation_manager": presentation_manger,
+        "raster_manager": raster_manager,
+        "reprojected_raster_manager": reprojected_raster_manager,
+        "plot_manager": plot_manager,
+        "path_manager": path_manager,
+        "text_manager": text_manager,
+    }
+)
