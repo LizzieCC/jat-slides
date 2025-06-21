@@ -1,9 +1,10 @@
-import dagster as dg
+from pathlib import Path
+
 import geopandas as gpd
 
+import dagster as dg
 from jat_slides.partitions import zone_partitions
 from jat_slides.resources import PathResource
-from pathlib import Path
 
 
 def agebs_trimmed_factory(year: int) -> dg.AssetsDefinition:
@@ -19,16 +20,19 @@ def agebs_trimmed_factory(year: int) -> dg.AssetsDefinition:
         path_resource: PathResource,
         ageb_df: gpd.GeoDataFrame,
     ) -> gpd.GeoDataFrame:
-        trimmed_path = Path(path_resource.trimmed_path)
+        trimmed_path = Path(path_resource.data_path) / "trimmed"
 
         path_list = list(trimmed_path.glob(f"{context.partition_key}.gpkg"))
         if len(path_list) == 0:
             return ageb_df
 
+        if ageb_df.crs is None:
+            err = "ageb_df has no CRS. Please set the CRS before trimming."
+            raise ValueError(err)
+
         trim_bounds = gpd.read_file(path_list[0]).to_crs(ageb_df.crs)["geometry"].item()
         intersection_area_frac = ageb_df.intersection(trim_bounds).area / ageb_df.area
-        ageb_df = ageb_df[intersection_area_frac > 0.8]
-        return ageb_df
+        return ageb_df.loc[intersection_area_frac > 0.8]
 
     return _asset
 

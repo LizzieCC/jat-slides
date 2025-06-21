@@ -1,36 +1,41 @@
-import rasterio.plot  # pylint: disable=unused-import
+from pathlib import Path
+
+import matplotlib as mpl
+import numpy as np
+import rasterio.plot as rio_plot
+from affine import Affine
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from matplotlib.patches import Patch
 
 import dagster as dg
-import matplotlib as mpl
-import rasterio as rio
-import numpy as np
-
-from affine import Affine
 from jat_slides.assets.maps.common import (
+    add_overlay,
     generate_figure,
     get_bounds_base,
     get_bounds_mun,
     get_bounds_trimmed,
+    get_labels_zone,
 )
 from jat_slides.partitions import mun_partitions, zone_partitions
-from matplotlib.figure import Figure
-from matplotlib.patches import Patch
+from jat_slides.resources import PathResource
 
 
-def add_built_legend(cmap, *, ax):
+def add_built_legend(cmap, *, ax: Axes) -> None:
     patches = []
     for i, year in enumerate(range(1975, 2021, 5)):
-        if year == 1975:
-            label = "1975 o antes"
-        else:
-            label = str(year)
+        label = "1975 o antes" if year == 1975 else str(year)
         patches.append(Patch(color=cmap(i), label=label))
 
-    ax.legend(
+    leg = ax.legend(
         handles=patches,
         title="Año de construcción",
         alignment="left",
+        framealpha=1,
+        loc="upper left",
     )
+
+    leg.set_zorder(9999)
 
 
 @dg.op(
@@ -38,10 +43,30 @@ def add_built_legend(cmap, *, ax):
     out=dg.Out(io_manager_key="plot_manager"),
 )
 def plot_raster(
+    context: dg.OpExecutionContext,
+    path_resource: PathResource,
     bounds: tuple[float, float, float, float],
     data_and_transform: tuple[np.ndarray, Affine],
+    labels: dict[str, bool],
 ) -> Figure:
-    fig, ax = generate_figure(*bounds)
+    state = context.partition_key.split(".")[0]
+
+    fig, ax = generate_figure(
+        *bounds,
+        add_mun_bounds=True,
+        add_mun_labels=labels["mun"],
+        add_state_bounds=False,
+        add_state_labels=labels["state"],
+        state_poly_kwargs={
+            "ls": "--",
+            "linewidth": 1.5,
+            "alpha": 1,
+            "edgecolor": "#006400",
+        },
+        mun_poly_kwargs={"linewidth": 0.3, "alpha": 0.2},
+        state_text_kwargs={"fontsize": 7, "color": "#006400", "alpha": 0.9},
+        state=state,
+    )
 
     data, transform = data_and_transform
 
@@ -49,29 +74,34 @@ def plot_raster(
     data[data == 0] = np.nan
 
     cmap = mpl.colormaps["magma_r"].resampled(10)
-    rio.plot.show(data, transform=transform, ax=ax, cmap=cmap)
+    rio_plot.show(data, transform=transform, ax=ax, cmap=cmap)
     add_built_legend(cmap, ax=ax)
+
+    overlay_path = Path(path_resource.data_path) / "overlays"
+    fpath = overlay_path / f"{context.partition_key}.gpkg"
+    add_overlay(fpath, ax)
+
     return fig
 
 
-# pylint: disable=no-value-for-parameter
 @dg.graph_asset(
     name="built",
     key_prefix="plot",
     ins={
         "data_and_transform": dg.AssetIn(
-            key="built", input_manager_key="reprojected_raster_manager"
-        )
+            key="built",
+            input_manager_key="reprojected_raster_manager",
+        ),
     },
     partitions_def=zone_partitions,
     group_name="plot",
 )
 def built_plot(data_and_transform: tuple[np.ndarray, Affine]) -> Figure:
     bounds = get_bounds_base()
-    return plot_raster(bounds, data_and_transform)
+    labels = get_labels_zone()
+    return plot_raster(bounds, data_and_transform, labels=labels)
 
 
-# pylint: disable=no-value-for-parameter
 @dg.graph_asset(
     name="built",
     key_prefix="plot_mun",
@@ -84,7 +114,6 @@ def built_plot_mun(data_and_transform: tuple[np.ndarray, Affine]) -> Figure:
     return plot_raster(bounds, data_and_transform)
 
 
-# pylint: disable=no-value-for-parameter
 @dg.graph_asset(
     name="built",
     key_prefix="plot_trimmed",

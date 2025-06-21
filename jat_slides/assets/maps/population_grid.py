@@ -1,8 +1,12 @@
-import dagster as dg
+from pathlib import Path
+
 import geopandas as gpd
 import matplotlib.colors as mcol
+from matplotlib.figure import Figure
 
+import dagster as dg
 from jat_slides.assets.maps.common import (
+    add_overlay,
     add_pop_legend,
     cmap_rdbu,
     generate_figure,
@@ -11,17 +15,39 @@ from jat_slides.assets.maps.common import (
     get_bounds_trimmed,
     get_cmap_bounds,
     get_linewidth,
+    get_labels_zone,
 )
 from jat_slides.partitions import mun_partitions, zone_partitions
-from matplotlib.figure import Figure
-from typing import assert_never
+from jat_slides.resources import PathResource
 
 
 @dg.op(out=dg.Out(io_manager_key="plot_manager"))
 def plot_dataframe(
-    bounds: tuple[float, float, float, float], df: gpd.GeoDataFrame, lw: float
+    context: dg.OpExecutionContext,
+    path_resource: PathResource,
+    bounds: tuple[float, float, float, float],
+    df: gpd.GeoDataFrame,
+    lw: float,
+    labels: dict[str, bool],
 ) -> Figure:
-    fig, ax = generate_figure(*bounds)
+    state = context.partition_key.split(".")[0]
+
+    fig, ax = generate_figure(
+        *bounds,
+        add_mun_bounds=True,
+        add_mun_labels=labels["mun"],
+        add_state_bounds=False,
+        add_state_labels=labels["state"],
+        state_poly_kwargs={
+            "ls": "--",
+            "linewidth": 1.5,
+            "alpha": 1,
+            "edgecolor": "#006400",
+        },
+        mun_poly_kwargs={"linewidth": 0.3, "alpha": 0.2},
+        state_text_kwargs={"fontsize": 7, "color": "#006400", "alpha": 0.9},
+        state=state,
+    )
 
     cmap_bounds = get_cmap_bounds(df["difference"], 3)
     norm = mcol.BoundaryNorm(cmap_bounds, 256)
@@ -38,6 +64,11 @@ def plot_dataframe(
     )
 
     add_pop_legend(cmap_bounds, ax=ax, cmap=cmap_rdbu)
+
+    overlay_path = Path(path_resource.data_path) / "overlays"
+    fpath = overlay_path / f"{context.partition_key}.gpkg"
+    add_overlay(fpath, ax)
+
     return fig
 
 
@@ -56,7 +87,8 @@ def population_grid_plot_factory(suffix: str) -> dg.AssetsDefinition:
         prefix = "trimmed"
         partitions_def = zone_partitions
     else:
-        assert_never(suffix)
+        err = f"Invalid suffix: {suffix}"
+        raise ValueError(err)
 
     @dg.graph_asset(
         name="population_grid",
@@ -68,7 +100,9 @@ def population_grid_plot_factory(suffix: str) -> dg.AssetsDefinition:
     def _asset(df: gpd.GeoDataFrame) -> Figure:
         bounds = op()
         lw = get_linewidth()
-        return plot_dataframe(bounds, df, lw)
+        labels = get_labels_zone()
+
+        return plot_dataframe(bounds, df, lw, labels)
 
     return _asset
 

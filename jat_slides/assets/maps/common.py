@@ -1,15 +1,25 @@
+import os
+from pathlib import Path
+
 import contextily as cx
-import dagster as dg
 import geopandas as gpd
 import matplotlib.colors as mcol
 import matplotlib.pyplot as plt
 import numpy as np
-
-from jat_slides.resources import ZonesMapListResource, ZonesMapFloatResource
+import pandas as pd
+import shapely
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
+from shapely.plotting import plot_line
+from typing import Literal
 
+import dagster as dg
+from jat_slides.resources import (
+    ConfigResource,
+    ZonesMapFloatResource,
+    ZonesMapListResource,
+)
 
 cmap_rdbu = mcol.LinearSegmentedColormap.from_list(
     "RdBu2",
@@ -18,16 +28,15 @@ cmap_rdbu = mcol.LinearSegmentedColormap.from_list(
 )
 
 
-def get_cmap_bounds(differences, n_steps):
+def get_cmap_bounds(differences, n_steps) -> np.ndarray:
     pos_step = differences.max() / n_steps
     neg_step = differences.min() / n_steps
 
-    bounds = np.array(
+    return np.array(
         [neg_step * i for i in range(1, n_steps + 1)][::-1]
         + [-0.001, 0.001]
-        + [pos_step * i for i in range(1, n_steps + 1)]
+        + [pos_step * i for i in range(1, n_steps + 1)],
     )
-    return bounds
 
 
 def add_pop_legend(bounds, *, ax, cmap: mcol.Colormap):
@@ -38,19 +47,162 @@ def add_pop_legend(bounds, *, ax, cmap: mcol.Colormap):
         if np.round(lower) == 0 and np.round(upper) == 0:
             label = "Sin cambio"
         else:
-            label = f"{lower:.0f} - {upper:.0f}"
+            label = f"{lower:,.0f} - {upper:,.0f}"
         patches.append(Patch(color=cmap(i), label=label))
-    patches = patches[::-1]
+    patches.reverse()
 
     ax.legend(
         handles=patches,
         title="Cambio de población\n(2020 - 2000)",
         alignment="left",
+        framealpha=1,
+    ).set_zorder(9999)
+
+
+def process_default_args(default_args: dict, kwargs: dict | None) -> dict:
+    if kwargs is None:
+        return default_args
+
+    kwargs = kwargs.copy()
+    for key, value in default_args.items():
+        if key not in kwargs:
+            kwargs[key] = value
+
+    return kwargs
+
+
+def add_polygon_bounds(
+    path: os.PathLike,
+    census_path: os.PathLike,
+    *,
+    xmin: float,
+    ymin: float,
+    xmax: float,
+    ymax: float,
+    ax: Axes,
+    add_labels: bool,
+    label_level: Literal["state", "mun"] | None = None,
+    poly_kwargs: dict | None = None,
+    text_kwargs: dict | None = None,
+) -> None:
+    default_poly_kwargs = {
+        "linewidth": 0.5,
+        "facecolor": "none",
+        "edgecolor": "k",
+        "zorder": 999,
+        "alpha": 0.3,
+    }
+
+    default_text_kwargs = {
+        "fontsize": 6,
+        "color": "k",
+        "alpha": 0.7,
+        "weight": "bold",
+    }
+
+    poly_kwargs = process_default_args(default_poly_kwargs, poly_kwargs)
+    text_kwargs = process_default_args(default_text_kwargs, text_kwargs)
+
+    df_mun = gpd.read_file(path).to_crs("EPSG:4326").set_index("CVEGEO")
+    bbox = shapely.box(xmin, ymin, xmax, ymax)
+    df_mun = df_mun[df_mun.intersects(bbox)]
+
+    if not isinstance(df_mun, gpd.GeoDataFrame):
+        err = "df_mun must be a GeoDataFrame"
+        raise TypeError(err)
+
+    df_mun.plot(
+        ax=ax,
+        **poly_kwargs,
     )
+
+    if add_labels:
+        if label_level is None:
+            err = "label_level must be 'state' or 'mun' if add_labels is True"
+            raise ValueError(err)
+
+        if label_level == "state":
+            usecols = ["ENTIDAD", "NOM_ENT"]
+            name_col = "NOM_ENT"
+        elif label_level == "mun":
+            usecols = ["ENTIDAD", "MUN", "NOM_MUN"]
+            name_col = "NOM_MUN"
+        else:
+            err = f"label_level must be 'state' or 'mun', got {label_level}"
+            raise ValueError(err)
+
+        df_name = (
+            pd.read_csv(census_path, usecols=usecols)
+            .assign(CVEGEO="")
+            .rename(columns={name_col: "name"})
+        )
+
+        if "ENTIDAD" in usecols:
+            df_name = df_name.assign(
+                CVEGEO=lambda df: df["CVEGEO"] + df["ENTIDAD"].astype(str).str.zfill(2)
+            )
+        if "MUN" in usecols:
+            df_name = df_name.assign(
+                CVEGEO=lambda df: df["CVEGEO"] + df["MUN"].astype(str).str.zfill(3)
+            )
+
+        df_name = (
+            df_name.drop(columns=["ENTIDAD", "MUN"], errors="ignore")
+            .drop_duplicates(subset=["CVEGEO"])
+            .set_index("CVEGEO")
+        )
+
+        df_mun_trimmed = (
+            df_mun[["geometry"]]
+            .join(df_name, how="inner")
+            .copy()
+            .assign(
+                geometry=lambda df: df["geometry"].intersection(bbox),
+                coords=lambda df: df["geometry"].apply(
+                    lambda x: x.representative_point().coords[:]
+                ),
+            )
+        )
+        df_mun_trimmed["coords"] = [c[0] for c in df_mun_trimmed["coords"]]
+
+        df_mun_trimmed["name"] = df_mun_trimmed["name"].replace(
+            {"México": "Estado de México"}
+        )
+
+        for _, row in df_mun_trimmed.iterrows():
+            text = row["name"]
+            if not isinstance(text, str):
+                err = "text must be a string"
+                raise TypeError(err)
+
+            xy = row["coords"]
+            if not isinstance(xy, tuple):
+                err = "xy must be a tuple"
+                raise TypeError(err)
+
+            ax.annotate(
+                text=text,
+                xy=xy,
+                horizontalalignment="center",
+                **text_kwargs,
+            )
 
 
 def generate_figure(
-    xmin: float, ymin: float, xmax: float, ymax: float
+    xmin: float,
+    ymin: float,
+    xmax: float,
+    ymax: float,
+    *,
+    add_mun_bounds: bool = False,
+    add_mun_labels: bool = False,
+    add_state_bounds: bool = False,
+    add_state_labels: bool = False,
+    state_poly_kwargs: dict | None = None,
+    state_text_kwargs: dict | None = None,
+    mun_poly_kwargs: dict | None = None,
+    mun_text_kwargs: dict | None = None,
+    state: int | None = None,
 ) -> tuple[Figure, Axes]:
     fig, ax = plt.subplots(figsize=(8, 4.5))
     ax.axis("off")
@@ -63,33 +215,108 @@ def generate_figure(
     fig.subplots_adjust(right=1)
     fig.subplots_adjust(left=0)
 
-    cx.add_basemap(ax, source=cx.providers.CartoDB.Positron, crs="EPSG:4326")
+    cx.add_basemap(ax, source=cx.providers.CartoDB.PositronNoLabels, crs="EPSG:4326")
+
+    if add_mun_bounds:
+        add_polygon_bounds(
+            Path(
+                "C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/final/framework/mun/2020.gpkg"
+            ),
+            Path(
+                f"C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"
+            ),
+            xmin=xmin,
+            ymin=ymin,
+            xmax=xmax,
+            ymax=ymax,
+            ax=ax,
+            add_labels=add_mun_labels,
+            poly_kwargs=mun_poly_kwargs,
+            text_kwargs=mun_text_kwargs,
+            label_level="mun",
+        )
+
+    if add_state_bounds:
+        add_polygon_bounds(
+            Path(
+                "C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/final/framework/state/2020.gpkg"
+            ),
+            Path(
+                f"C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"
+            ),
+            xmin=xmin,
+            ymin=ymin,
+            xmax=xmax,
+            ymax=ymax,
+            ax=ax,
+            add_labels=add_state_labels,
+            poly_kwargs=state_poly_kwargs,
+            text_kwargs=state_text_kwargs,
+            label_level="state",
+        )
+
     return fig, ax
 
 
 @dg.op
 def get_bounds_base(
-    context: dg.OpExecutionContext, zone_bounds_resource: ZonesMapListResource
+    context: dg.OpExecutionContext,
+    zone_config_resource: ConfigResource,
 ) -> tuple[float, float, float, float]:
-    return tuple(zone_bounds_resource.zones[context.partition_key])
+    out = tuple(zone_config_resource.bounds[context.partition_key])
+    if len(out) != 4:
+        err = f"Expected 4 bounds, got {len(out)}: {out}"
+        raise ValueError(err)
+    return out
 
 
 @dg.op
 def get_bounds_mun(
-    context: dg.OpExecutionContext, mun_bounds_resource: ZonesMapListResource
+    context: dg.OpExecutionContext,
+    mun_config_resource: ConfigResource,
 ) -> tuple[float, float, float, float]:
-    return tuple(mun_bounds_resource.zones[context.partition_key])
+    out = tuple(mun_config_resource.bounds[context.partition_key])
+    if len(out) != 4:
+        err = f"Expected 4 bounds, got {len(out)}: {out}"
+        raise ValueError(err)
+    return out
 
 
 @dg.op
 def get_bounds_trimmed(
-    context: dg.OpExecutionContext, trimmed_bounds_resource: ZonesMapListResource
+    context: dg.OpExecutionContext,
+    trimmed_config_resource: ConfigResource,
 ) -> tuple[float, float, float, float]:
-    return tuple(trimmed_bounds_resource.zones[context.partition_key])
+    out = tuple(trimmed_config_resource.bounds[context.partition_key])
+    if len(out) != 4:
+        err = f"Expected 4 bounds, got {len(out)}: {out}"
+        raise ValueError(err)
+    return out
+
+
+@dg.op
+def get_labels_zone(
+    context: dg.OpExecutionContext, zone_config_resource: ConfigResource
+) -> dict[str, bool]:
+    if (
+        zone_config_resource.add_labels is not None
+        and context.partition_key in zone_config_resource.add_labels
+    ):
+        return {
+            "state": "state" in zone_config_resource.add_labels[context.partition_key],
+            "mun": "mun" in zone_config_resource.add_labels[context.partition_key],
+        }
+    return {
+        "state": False,
+        "mun": False,
+    }
 
 
 def update_categorical_legend(
-    ax: Axes, title: str, fmt: str, cmap: mcol.Colormap
+    ax: Axes,
+    title: str,
+    fmt: str,
+    cmap: mcol.Colormap,
 ) -> None:
     leg = ax.get_legend()
     leg.set_title(title)
@@ -106,23 +333,43 @@ def update_categorical_legend(
     steps[-1] = 0.9999
     handles = [Patch(facecolor=cmap(x)) for x in reversed(steps)]
 
-    ax.legend(handles=handles, labels=reversed(texts), title=title, alignment="left")
+    ax.legend(
+        handles=handles,
+        labels=reversed(texts),
+        title=title,
+        alignment="left",
+        framealpha=1,
+    ).set_zorder(9999)
 
 
 @dg.op
 def get_linewidth(
-    context: dg.OpExecutionContext, zone_linewidths_resource: ZonesMapFloatResource
+    context: dg.OpExecutionContext,
+    zone_config_resource: ConfigResource,
 ) -> float:
-    if context.partition_key in zone_linewidths_resource.zones:
-        return zone_linewidths_resource.zones[context.partition_key]
-    else:
-        return 0.2
+    if (
+        zone_config_resource.linewidths is not None
+        and context.partition_key in zone_config_resource.linewidths
+    ):
+        return zone_config_resource.linewidths[context.partition_key]
+    return 0.2
 
 
 @dg.op
 def intersect_geometries(
-    sources: gpd.GeoDataFrame, targets: gpd.GeoDataFrame
+    sources: gpd.GeoDataFrame,
+    targets: gpd.GeoDataFrame,
 ) -> gpd.GeoDataFrame:
+    if sources.crs is None:
+        err = "Sources must have a CRS"
+        raise ValueError(err)
+
     overlay = sources.sjoin(targets[["geometry"]].to_crs(sources.crs))
     idx = overlay.index.unique()
     return sources.loc[idx]
+
+
+def add_overlay(fpath: Path, ax: Axes) -> None:
+    if fpath.exists():
+        geom = gpd.read_file(fpath).to_crs("EPSG:4326")["geometry"].item()
+        plot_line(geom, ax=ax, linewidth=3, color="k", add_points=False)

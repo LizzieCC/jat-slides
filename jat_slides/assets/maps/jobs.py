@@ -1,59 +1,25 @@
-import jenkspy
+from pathlib import Path
 
-import dagster as dg
 import geopandas as gpd
+import jenkspy
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
-
-from jat_slides.assets.maps.common import (
-    generate_figure,
-    get_linewidth,
-    get_bounds_base,
-    get_bounds_mun,
-    get_bounds_trimmed,
-    intersect_geometries,
-)
-from jat_slides.partitions import mun_partitions, zone_partitions
-from jat_slides.resources import (
-    PathResource,
-)
-from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from pathlib import Path
-from typing import assert_never
+from matplotlib.legend import Legend
 
-
-@dg.op
-def load_jobs_df(
-    context: dg.OpExecutionContext, path_resource: PathResource
-) -> gpd.GeoDataFrame:
-    jobs_path = Path(path_resource.jobs_path)
-    return (
-        gpd.read_file(jobs_path / f"{context.partition_key}.geojson")
-        .dropna(subset=["num_empleos"])
-        .to_crs("EPSG:4326")
-    )
-
-
-@dg.op
-def load_state_jobs_df(
-    context: dg.OpExecutionContext, path_resource: PathResource
-) -> gpd.GeoDataFrame:
-    if len(context.partition_key) == 4:
-        ent = f"0{context.partition_key[0]}"
-    elif len(context.partition_key) == 5:
-        ent = context.partition_key[:2]
-    else:
-        assert_never(len(context.partition_key))
-
-    jobs_path = Path(path_resource.jobs_path)
-
-    df = []
-    for path in jobs_path.glob(f"{ent}*.geojson"):
-        df.append(gpd.read_file(path).dropna(subset=["num_empleos"]))
-
-    return gpd.GeoDataFrame(pd.concat(df, ignore_index=True)).to_crs("EPSG:4326")
+import dagster as dg
+from jat_slides.assets.maps.common import (
+    add_overlay,
+    generate_figure,
+    get_bounds_base,
+    get_bounds_trimmed,
+    get_linewidth,
+    intersect_geometries,
+    get_labels_zone,
+)
+from jat_slides.partitions import zone_partitions
+from jat_slides.resources import PathResource
 
 
 def add_categorical_column(
@@ -78,28 +44,43 @@ def add_categorical_column(
     return df, label_map
 
 
-def replace_categorical_legend(ax: Axes, label_map: dict[int, str]):
-    legend = ax.get_legend()
-
-    labels = [label_map[int(text.get_text())] for text in legend.texts]
-    handles = legend.legend_handles
-
-    ax.legend(
-        labels=reversed(labels), handles=reversed(handles), title="Número de empleos"
-    )
+def replace_categorical_legend(legend: Legend, label_map: dict[int, str]):
+    for text in legend.texts:
+        text.set_text(label_map[int(text.get_text())])
 
 
 @dg.op(out=dg.Out(io_manager_key="plot_manager"))
 def plot_jobs(
-    df: gpd.GeoDataFrame, bounds: tuple[float, float, float, float], lw: float
+    context: dg.OpExecutionContext,
+    path_resource: PathResource,
+    df: gpd.GeoDataFrame,
+    bounds: tuple[float, float, float, float],
+    lw: float,
+    labels: dict[str, bool],
 ) -> Figure:
-    df = df.to_crs("EPSG:4326")
+    state = context.partition_key.split(".")[0]
 
     cmap = mpl.colormaps["YlGn"]
 
+    df = df.to_crs("EPSG:4326")
     df, label_map = add_categorical_column(df, "jobs", 6)
 
-    fig, ax = generate_figure(*bounds)
+    fig, ax = generate_figure(
+        *bounds,
+        add_mun_bounds=True,
+        add_mun_labels=labels["mun"],
+        add_state_bounds=False,
+        add_state_labels=labels["state"],
+        state_poly_kwargs={
+            "ls": "--",
+            "linewidth": 1.5,
+            "alpha": 1,
+            "edgecolor": "#006400",
+        },
+        mun_poly_kwargs={"linewidth": 0.3, "alpha": 0.2},
+        state_text_kwargs={"fontsize": 7, "color": "#006400", "alpha": 0.9},
+        state=state,
+    )
     df.plot(
         column="category",
         legend=True,
@@ -110,9 +91,16 @@ def plot_jobs(
         lw=lw,
         autolim=False,
         aspect=None,
+        legend_kwds={"framealpha": 1, "title": "Número de empleos"},
     )
-    replace_categorical_legend(ax, label_map)
-    # update_categorical_legend(ax, title="Número de empleos", fmt=",.0f", cmap=cmap)
+    leg = ax.get_legend()
+    replace_categorical_legend(leg, label_map)
+    leg.set_zorder(9999)
+
+    overlay_path = Path(path_resource.data_path) / "overlays"
+    fpath = overlay_path / f"{context.partition_key}.gpkg"
+    add_overlay(fpath, ax)
+
     return fig
 
 
@@ -127,35 +115,23 @@ def plot_jobs(
 def jobs_plot(df_jobs: gpd.GeoDataFrame) -> Figure:
     lw = get_linewidth()
     bounds = get_bounds_base()
-    return plot_jobs(df_jobs, bounds, lw)
+    labels = get_labels_zone()
+    return plot_jobs(df_jobs, bounds, lw, labels)
 
 
 # pylint: disable=no-value-for-parameter
 @dg.graph_asset(
     name="jobs",
     key_prefix="plot_trimmed",
-    ins={"agebs": dg.AssetIn(["agebs_trimmed", "2020"])},
+    ins={
+        "agebs": dg.AssetIn(["agebs_trimmed", "2020"]),
+        "df_jobs": dg.AssetIn(["jobs", "reprojected"]),
+    },
     partitions_def=zone_partitions,
     group_name="plot_trimmed",
 )
-def jobs_trimmed_plot(agebs: gpd.GeoDataFrame) -> Figure:
-    df = load_jobs_df()
-    df = intersect_geometries(df, agebs)
+def jobs_trimmed_plot(agebs: gpd.GeoDataFrame, df_jobs: gpd.GeoDataFrame) -> Figure:
+    df = intersect_geometries(df_jobs, agebs)
     lw = get_linewidth()
     bounds = get_bounds_trimmed()
-    return plot_jobs(df, bounds, lw)
-
-
-@dg.graph_asset(
-    name="jobs",
-    key_prefix="plot_mun",
-    ins={"agebs": dg.AssetIn(["muns", "2020"])},
-    partitions_def=mun_partitions,
-    group_name="plot_mun",
-)
-def jobs_mun_plot(agebs: gpd.GeoDataFrame) -> Figure:
-    df = load_state_jobs_df()
-    df = intersect_geometries(df, agebs)
-    lw = get_linewidth()
-    bounds = get_bounds_mun()
     return plot_jobs(df, bounds, lw)

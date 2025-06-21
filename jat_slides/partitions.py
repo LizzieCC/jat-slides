@@ -1,10 +1,9 @@
 import os
+from pathlib import Path
 
 import geopandas as gpd
 
 from dagster import StaticPartitionsDefinition
-from pathlib import Path
-
 
 zone_partitions = StaticPartitionsDefinition(
     [
@@ -77,13 +76,11 @@ zone_partitions = StaticPartitionsDefinition(
         "30.1.07",
         "31.1.01",
         "32.1.01",
-    ]
+    ],
 )
 
 
-mun_2020_path = (
-    Path(os.getenv("POPULATION_GRIDS_PATH")) / "framework/municipalities/2020.gpkg"
-)
+mun_2020_path = Path(os.getenv("POPULATION_GRIDS_PATH")) / "framework/mun/2020.gpkg"
 df_mun = gpd.read_file(mun_2020_path)
 mun_list = df_mun["CVEGEO"].sort_values().astype(str).to_numpy().tolist()
 mun_partitions = StaticPartitionsDefinition(mun_list)

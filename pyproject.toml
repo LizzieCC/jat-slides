@@ -18,9 +18,11 @@ babel = "^2.16.0"
 toml = "^0.10.2"
 mapclassify = "^2.8.1"
 jenkspy = "^0.4.1"
+pandas-stubs = "^2.2.3.250527"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.0.1"
+basedpyright = "^1.29.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -29,3 +31,11 @@ build-backend = "poetry.core.masonry.api"
 [tool.dagster]
 module_name = "jat_slides.definitions"
 code_location_name = "jat_slides"
+
+[tool.basedpyright] 
+ignore = ["**/*.ipynb"]
+typeCheckingMode = "standard"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D", "PTH123", "PD901", "COM812", "FA102", "PLR2004", "PLR0913"]

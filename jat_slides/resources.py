@@ -1,18 +1,15 @@
 import toml
 
 import dagster as dg
-
 from dagster import ConfigurableResource
 
 
 class PathResource(ConfigurableResource):
     pg_path: str
-    out_path: str
     ghsl_path: str
-    figure_path: str
     segregation_path: str
     jobs_path: str
-    trimmed_path: str
+    data_path: str
 
 
 class ZonesListResource(ConfigurableResource):
@@ -20,7 +17,7 @@ class ZonesListResource(ConfigurableResource):
 
 
 class ZonesMapListResource(ConfigurableResource):
-    zones: dict[str, list[float, float, float, float]]
+    zones: dict[str, list[float]]
 
 
 class ZonesMapStrResource(ConfigurableResource):
@@ -31,46 +28,63 @@ class ZonesMapFloatResource(ConfigurableResource):
     zones: dict[str, float]
 
 
-with open("./config.toml", "r", encoding="utf8") as f:
+class ConfigResource(ConfigurableResource):
+    bounds: dict[str, list[float]]
+    names: dict[str, str] | None = None
+    linewidths: dict[str, float] | None = None
+    legend_pos: dict[str, str] | None = None
+    add_labels: dict[str, list[str]] | None = None
+
+
+with open("./config/zone.toml", encoding="utf8") as f:
     config = toml.load(f)
 
-wanted_zones_resource = ZonesListResource(zones=config["wanted_zones"])
-zone_names_resource = ZonesMapStrResource(zones=config["zone_names"])
-zone_bounds_resource = ZonesMapListResource(zones=config["bounds"])
-zone_linewidths_resource = ZonesMapFloatResource(zones=config["linewidths"])
+zone_config = ConfigResource(
+    names=config.get("names"),
+    bounds=config.get("bounds"),
+    linewidths=config.get("linewidths"),
+    legend_pos=config.get("legend_pos"),
+    add_labels=config.get("add_labels"),
+)
 
-wanted_muns_resource = ZonesListResource(zones=config["wanted_muns"])
-mun_names_resource = ZonesMapStrResource(zones=config["mun_names"])
-mun_bounds_resource = ZonesMapListResource(zones=config["bounds_mun"])
-mun_legend_pos_resource = ZonesMapStrResource(zones=config["legend_pos_mun"])
 
-wanted_trimmed_resource = ZonesListResource(zones=config["wanted_trimmed"])
-trimmed_bounds_resource = ZonesMapListResource(zones=config["bounds_trimmed"])
+with open("./config/mun.toml", encoding="utf8") as f:
+    config = toml.load(f)
+
+mun_config = ConfigResource(
+    names=config.get("names"),
+    bounds=config.get("bounds"),
+    linewidths=config.get("linewidths"),
+    legend_pos=config.get("legend_pos"),
+    add_labels=config.get("add_labels"),
+)
+
+
+with open("./config/trimmed.toml", encoding="utf8") as f:
+    config = toml.load(f)
+trimmed_config = ConfigResource(
+    names=config.get("names"),
+    bounds=config.get("bounds"),
+    linewidths=config.get("linewidths"),
+    legend_pos=config.get("legend_pos"),
+    add_labels=config.get("add_labels"),
+)
 
 
 path_resource = PathResource(
     ghsl_path=dg.EnvVar("GHSL_PATH"),
     pg_path=dg.EnvVar("POPULATION_GRIDS_PATH"),
-    out_path=dg.EnvVar("OUT_PATH"),
-    figure_path=dg.EnvVar("FIGURE_PATH"),
     segregation_path=dg.EnvVar("SEGREGATION_PATH"),
     jobs_path=dg.EnvVar("JOBS_PATH"),
-    trimmed_path=dg.EnvVar("TRIMMED_PATH"),
+    data_path=dg.EnvVar("DATA_PATH"),
 )
 
 
 defs = dg.Definitions(
     resources={
         "path_resource": path_resource,
-        "wanted_zones_resource": wanted_zones_resource,
-        "zone_names_resource": zone_names_resource,
-        "zone_bounds_resource": zone_bounds_resource,
-        "zone_linewidths_resource": zone_linewidths_resource,
-        "wanted_muns_resource": wanted_muns_resource,
-        "mun_names_resource": mun_names_resource,
-        "mun_bounds_resource": mun_bounds_resource,
-        "trimmed_bounds_resource": trimmed_bounds_resource,
-        "wanted_trimmed_resource": wanted_trimmed_resource,
-        "mun_legend_pos_resource": mun_legend_pos_resource,
+        "zone_config_resource": zone_config,
+        "mun_config_resource": mun_config,
+        "trimmed_config_resource": trimmed_config,
     },
 )

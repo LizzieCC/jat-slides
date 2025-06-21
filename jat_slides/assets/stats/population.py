@@ -1,9 +1,10 @@
+from typing import assert_never
+
 import geopandas as gpd
 import pandas as pd
 
-from dagster import asset, AssetIn
+from dagster import AssetIn, asset
 from jat_slides.partitions import mun_partitions, zone_partitions
-from typing import assert_never
 
 
 def calculate_lost_pop(
@@ -14,7 +15,8 @@ def calculate_lost_pop(
 ) -> pd.DataFrame:
     pops = []
     for year, agebs in zip(
-        (1990, 2000, 2010, 2020), (agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+        (1990, 2000, 2010, 2020),
+        (agebs_1990, agebs_2000, agebs_2010, agebs_2020),
     ):
         pop = agebs["POBTOT"].sum()
         pops.append(dict(year=year, pop=pop))

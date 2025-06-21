@@ -1,25 +1,22 @@
 import dagster as dg
-import jat_slides.managers as managers
-import jat_slides.resources as resources
-
-from jat_slides.assets import agebs, built, cells, jobs, maps, muns, slides, stats
-
+from jat_slides import assets, managers, resources
 
 # Definitions
 defs = dg.Definitions.merge(
     dg.Definitions(
         assets=(
-            dg.load_assets_from_modules([agebs], group_name="agebs")
-            + dg.load_assets_from_modules([built], group_name="built_rasters")
-            + dg.load_assets_from_modules([muns], group_name="muns")
-            + dg.load_assets_from_modules([cells], group_name="cells")
-            + dg.load_assets_from_modules([slides], group_name="slides")
-            + dg.load_assets_from_modules([jobs], group_name="jobs")
+            list(dg.load_assets_from_modules([assets.agebs], group_name="agebs"))
+            + list(dg.load_assets_from_modules([assets.muns], group_name="muns"))
+            + list(
+                dg.load_assets_from_modules([assets.built, assets.cells, assets.income])
+            )
+            + list(dg.load_assets_from_modules([assets.slides], group_name="slides"))
+            + list(dg.load_assets_from_modules([assets.jobs], group_name="jobs"))
         ),
     ),
-    agebs.defs,
-    maps.defs,
-    stats.defs,
+    assets.agebs.defs,
+    assets.maps.defs,
+    assets.stats.defs,
     managers.defs,
     resources.defs,
 )

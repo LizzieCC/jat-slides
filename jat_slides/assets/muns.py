@@ -1,20 +1,16 @@
-import geopandas as gpd
-import pandas as pd
-
-from dagster import asset, AssetExecutionContext
-from jat_slides.partitions import mun_partitions
-from jat_slides.resources import PathResource
 from pathlib import Path
 from typing import assert_never
 
+import geopandas as gpd
+import pandas as pd
+
+from dagster import AssetExecutionContext, asset
+from jat_slides.partitions import mun_partitions
+from jat_slides.resources import PathResource
+
 
 def muns_factory(year: int):
-    if year in (1990, 2000):
-        infix = "translated"
-    elif year in (2010, 2020):
-        infix = "shaped"
-    else:
-        assert_never(year)
+    infix = "shaped"
 
     @asset(
         name=str(year),
@@ -23,7 +19,8 @@ def muns_factory(year: int):
         io_manager_key="gpkg_manager",
     )
     def _asset(
-        context: AssetExecutionContext, path_resource: PathResource
+        context: AssetExecutionContext,
+        path_resource: PathResource,
     ) -> gpd.GeoDataFrame:
         total_chars = len(context.partition_key)
         if total_chars == 4:

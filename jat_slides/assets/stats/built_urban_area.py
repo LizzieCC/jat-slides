@@ -1,9 +1,10 @@
+from typing import assert_never
+
 import geopandas as gpd
 import pandas as pd
 
-from dagster import asset, AssetIn
+from dagster import AssetIn, asset
 from jat_slides.partitions import mun_partitions, zone_partitions
-from typing import assert_never
 
 
 def calculate_built_urban_area(
@@ -14,7 +15,8 @@ def calculate_built_urban_area(
 ) -> pd.DataFrame:
     out = []
     for year, agebs in zip(
-        (1990, 2000, 2010, 2020), (agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+        (1990, 2000, 2010, 2020),
+        (agebs_1990, agebs_2000, agebs_2010, agebs_2020),
     ):
         area = agebs.to_crs("EPSG:6372").area.sum()
         out.append(dict(year=year, area=area))
@@ -55,7 +57,10 @@ def built_urban_area_factory(suffix: str):
         agebs_2020: gpd.GeoDataFrame,
     ) -> pd.DataFrame:
         return calculate_built_urban_area(
-            agebs_1990, agebs_2000, agebs_2010, agebs_2020
+            agebs_1990,
+            agebs_2000,
+            agebs_2010,
+            agebs_2020,
         )
 
     return _asset

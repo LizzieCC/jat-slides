@@ -1,11 +1,11 @@
-import dagster as dg
 import geopandas as gpd
 
+import dagster as dg
+from dagster._core.definitions.assets import AssetsDefinition
 from jat_slides.partitions import mun_partitions, zone_partitions
-from typing import assert_never
 
 
-def lost_pop_after_2000_factory(suffix: str):
+def lost_pop_after_2000_factory(suffix: str) -> AssetsDefinition:
     if suffix == "":
         prefix = "base"
         partitions_def = zone_partitions
@@ -16,7 +16,8 @@ def lost_pop_after_2000_factory(suffix: str):
         prefix = "trimmed"
         partitions_def = zone_partitions
     else:
-        assert_never(suffix)
+        err = f"Suffix {suffix} is not supported. Supported suffixes are '', '_mun', and '_trimmed'."  # noqa: E501
+        raise ValueError(err)
 
     @dg.asset(
         name="lost_pop_after_2000",

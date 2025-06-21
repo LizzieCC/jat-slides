@@ -1,106 +1,148 @@
 import datetime
+from pathlib import Path
 
-import dagster as dg
 import numpy as np
 import pandas as pd
-
 from babel.dates import format_date
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.presentation import Presentation as PresentationType
+from pptx.shapes.autoshape import Shape
+from pptx.shapes.base import BaseShape
 from pptx.shapes.shapetree import SlideShapes
 from pptx.slide import SlideLayout
 from pptx.text.text import TextFrame
 from pptx.util import Cm, Pt
-from dagster import asset, AssetIn
-from pathlib import Path
-from typing import Optional
 
+import dagster as dg
+from dagster import AssetIn, asset
 from jat_slides.partitions import zone_partitions
-from jat_slides.resources import ZonesListResource, ZonesMapStrResource
+from jat_slides.resources import ConfigResource
+
+RGB_BLUE = RGBColor(0x00, 0x70, 0xC0)
+RGB_RED = RGBColor(0xFF, 0x00, 0x00)
 
 
-def find_layouts(pres: PresentationType) -> dict[str, SlideLayout]:
+def find_layouts(pres) -> dict:
     layouts = {}
     for layout in pres.slide_layouts:
         name = layout.name
         if name == "Title Slide":
             layouts["title"] = layout
-        elif name == "Map and Content":
-            layouts["pop"] = layout
-        elif name == "Map and Table":
-            layouts["built"] = layout
+        elif name == "Picture with Title":
+            layouts["picture_with_title"] = layout
+        elif name == "Picture with Title and Content":
+            layouts["picture_with_title_and_content"] = layout
+        elif name == "Picture with Title, Content and Table":
+            layouts["picture_with_title_content_table"] = layout
         elif name == "Section Divider":
             layouts["section"] = layout
-        elif name == "Income":
-            layouts["income"] = layout
-        elif name == "Jobs":
-            layouts["jobs"] = layout
     return layouts
 
 
-def find_shape(shapes: SlideShapes, prefix: str):
+def find_shape(shapes: SlideShapes, prefix: str) -> BaseShape:
     for shape in shapes:
         if shape.name.startswith(prefix):
             return shape
+
+    raise ValueError(
+        f"Shape with prefix '{prefix}' not found in the slide shapes.",
+    )
 
 
 def add_title_slide(pres: PresentationType, title_layout: SlideLayout) -> None:
     title = pres.slides.add_slide(title_layout)
 
     placeholders = title.shapes
-    placeholders[0].text = "Dinámicas Urbanas"
-    placeholders[2].text = format_date(
-        datetime.date.today(), locale="es", format="long"
+    title_shape = placeholders[0]
+    date_shape = placeholders[2]
+
+    if not isinstance(title_shape, Shape) or not isinstance(date_shape, Shape):
+        raise TypeError("Placeholders are not of type Shape.")
+
+    title_shape.text = "Dinámicas Urbanas"
+    date_shape.text = format_date(
+        datetime.date.today(),
+        locale="es",
+        format="long",
     )
 
 
 def add_section_slide(
-    pres: PresentationType, section_layout: SlideLayout, section_name: str
+    pres: PresentationType,
+    section_layout: SlideLayout,
+    section_name: str,
 ) -> None:
     section = pres.slides.add_slide(section_layout)
-    section.shapes[0].text = section_name
+    section_title_shape = section.shapes[0]
+
+    if not isinstance(section_title_shape, Shape):
+        err = "Section title shape is not of type Shape."
+        raise TypeError(err)
+    section_title_shape.text = section_name
 
 
 def add_highlighted_text_to_frame(
-    frame: TextFrame, *, text_left: str, highlight: float, text_right: str
+    shape: Shape,
+    *,
+    text_left: str,
+    highlight: str,
+    text_right: str,
+    color: RGBColor,
 ) -> None:
+    frame: TextFrame = shape.text_frame
+    frame.clear()
+
     p = frame.paragraphs[0]
     run = p.add_run()
     run.text = text_left
 
     run = p.add_run()
-    run.text = f"{highlight:.0%}"
+    run.text = highlight
     run.font.size = Pt(28)
     run.font.bold = True
-    run.font.color.rgb = RGBColor(0x00, 0x70, 0xC0)
+    run.font.color.rgb = color
 
     run = p.add_run()
     run.text = text_right
 
 
-def add_lost_pop_slide(
+def add_normal_text_to_shape(shape: Shape, text: str) -> None:
+    frame: TextFrame = shape.text_frame
+    frame.clear()
+
+    p = frame.paragraphs[0]
+    run = p.add_run()
+    run.text = text
+
+
+def add_picture_with_highlight_slide(
     pres: PresentationType,
     layout: SlideLayout,
-    lost_pop_frac: float,
+    *,
+    title: str,
+    text_left: str,
+    text_right: str,
+    highlight: str,
     picture_path: Path,
+    color: RGBColor,
 ) -> None:
     pop_slide = pres.slides.add_slide(layout)
 
-    text_shape = find_shape(pop_slide.shapes, prefix="Text")
-    frame: TextFrame = text_shape.text_frame
-    frame.clear()
+    title_shape = find_shape(pop_slide.shapes, prefix="Text Placeholder 2")
+    add_normal_text_to_shape(title_shape, title)
 
+    text_shape = find_shape(pop_slide.shapes, prefix="Text Placeholder 3")
     add_highlighted_text_to_frame(
-        frame,
-        text_left="El ",
-        highlight=lost_pop_frac,
-        text_right=" de la superficie de 2020 perdió población con respecto al 2000.",
+        text_shape,
+        text_left=text_left,
+        highlight=highlight,
+        text_right=text_right,
+        color=color,
     )
 
-    if picture_path.exists():
-        figure_shape = find_shape(pop_slide.shapes, prefix="Picture")
-        figure_shape.insert_picture(str(picture_path))
+    figure_shape = find_shape(pop_slide.shapes, prefix="Picture")
+    figure_shape.insert_picture(str(picture_path))
 
 
 # pylint: disable=protected-access
@@ -128,15 +170,16 @@ def add_built_slide(
 
     built_slide = pres.slides.add_slide(layout)
 
-    text_shape = find_shape(built_slide.shapes, prefix="Text")
-    frame: TextFrame = text_shape.text_frame
-    frame.clear()
+    title_shape = find_shape(built_slide.shapes, prefix="Text Placeholder 2")
+    add_normal_text_to_shape(title_shape, "Dinámica de urbanización 2000 a 2020")
 
+    text_shape = find_shape(built_slide.shapes, prefix="Text Placeholder 3")
     add_highlighted_text_to_frame(
-        frame,
+        text_shape,
         text_left="El ",
-        highlight=built_after_frac,
+        highlight=f"{built_after_frac:.0%}",
         text_right=" de los píxeles se urbanizaron en el año 2000 o posterior.",
+        color=RGB_BLUE,
     )
 
     table_shape = find_shape(built_slide.shapes, prefix="Table")
@@ -172,7 +215,7 @@ def add_built_slide(
                 f"{urban_area_df.loc[2020]:.1f}",
             ],
             ["", f"x{pop_change:.2f}", f"x{built_change:.2f}", f"x{urban_change:.2f}"],
-        ]
+        ],
     )
 
     style_arr = np.array(
@@ -181,7 +224,7 @@ def add_built_slide(
             [True, False, False, False],
             [True, False, False, False],
             [False, True, True, True],
-        ]
+        ],
     )
 
     for row_idx in range(text_arr.shape[0]):
@@ -194,7 +237,7 @@ def add_built_slide(
 
             if style_arr[row_idx, col_idx]:
                 run.font.bold = True
-                run.font.color.rgb = RGBColor(0x00, 0x70, 0xC0)
+                run.font.color.rgb = RGB_BLUE
 
     if picture_path.exists():
         figure_shape = find_shape(built_slide.shapes, prefix="Picture")
@@ -202,61 +245,21 @@ def add_built_slide(
 
 
 def add_single_picture_slide(
-    pres: PresentationType, layout: SlideLayout, *, picture_path: Path
-):
-    income_slide = pres.slides.add_slide(layout)
-    if picture_path.exists():
-        figure_shape = find_shape(income_slide.shapes, prefix="Picture")
-        figure_shape.insert_picture(str(picture_path))
-
-
-def generate_slides(
+    pres: PresentationType,
+    layout: SlideLayout,
     *,
-    id_list: list[str],
-    name_map: ZonesMapStrResource,
-    lost_pop_after_2000: dict[str, float],
-    built_after_2000: dict[str, float],
-    pop_df: dict[str, pd.DataFrame],
-    built_df: dict[str, pd.DataFrame],
-    built_urban_df: dict[str, pd.DataFrame],
-    pg_figure_paths: dict[str, Path],
-    built_figure_paths: dict[str, Path],
-    income_figure_paths: dict[str, Path] | None = None,
-    jobs_figure_paths: dict[str, Path] | None = None,
-):
-    pres = Presentation("./template.pptx")
-    layouts = find_layouts(pres)
+    picture_path: Path,
+    title: str,
+    total_jobs: float | None = None,
+) -> None:
+    slide = pres.slides.add_slide(layout)
 
-    add_title_slide(pres, layouts["title"])
+    title_shape = find_shape(slide.shapes, prefix="Text")
+    add_normal_text_to_shape(title_shape, title)
 
-    for zone in id_list:
-        add_section_slide(pres, layouts["section"], name_map.zones[zone])
-
-        lost_pop_frac = lost_pop_after_2000[zone]
-        add_lost_pop_slide(pres, layouts["pop"], lost_pop_frac, pg_figure_paths[zone])
-
-        built_after_frac = built_after_2000[zone]
-        add_built_slide(
-            pres,
-            layouts["built"],
-            built_after_frac,
-            pop_df=pop_df[zone],
-            built_area_df=built_df[zone],
-            urban_area_df=built_urban_df[zone],
-            picture_path=built_figure_paths[zone],
-        )
-
-        if income_figure_paths is not None:
-            add_single_picture_slide(
-                pres, layouts["income"], picture_path=income_figure_paths[zone]
-            )
-
-        if jobs_figure_paths is not None:
-            add_single_picture_slide(
-                pres, layouts["jobs"], picture_path=jobs_figure_paths[zone]
-            )
-
-    return pres
+    if picture_path.exists():
+        figure_shape = find_shape(slide.shapes, prefix="Picture")
+        figure_shape.insert_picture(str(picture_path))
 
 
 def generate_single_slide(
@@ -264,24 +267,34 @@ def generate_single_slide(
     name: str,
     lost_pop_after_2000: float,
     built_after_2000: float,
+    total_jobs: float,
     pop_df: pd.DataFrame,
     built_df: pd.DataFrame,
     built_urban_df: pd.DataFrame,
     built_figure_path: Path,
     pg_figure_path: Path,
     income_figure_path: Path | None,
-    jobs_figure_path: Path | None,
-):
+    jobs_figure_path: Path,
+) -> PresentationType:
     pres = Presentation("./template.pptx")
     layouts = find_layouts(pres)
 
     add_section_slide(pres, layouts["section"], name)
 
-    add_lost_pop_slide(pres, layouts["pop"], lost_pop_after_2000, pg_figure_path)
+    add_picture_with_highlight_slide(
+        pres,
+        layouts["picture_with_title_and_content"],
+        title="Dinámica de población 2000 a 2020",
+        text_left="El ",
+        highlight=f"{lost_pop_after_2000:.0%}",
+        text_right=" de la superficie construida de 2020 perdió población con respecto al 2000.",
+        picture_path=pg_figure_path,
+        color=RGB_RED,
+    )
 
     add_built_slide(
         pres,
-        layouts["built"],
+        layouts["picture_with_title_content_table"],
         built_after_2000,
         pop_df=pop_df,
         built_area_df=built_df,
@@ -291,11 +304,24 @@ def generate_single_slide(
 
     if income_figure_path is not None:
         add_single_picture_slide(
-            pres, layouts["income"], picture_path=income_figure_path
+            pres,
+            layouts["picture_with_title"],
+            picture_path=income_figure_path,
+            title="Ingreso",
         )
 
-    if jobs_figure_path is not None:
-        add_single_picture_slide(pres, layouts["jobs"], picture_path=jobs_figure_path)
+    add_picture_with_highlight_slide(
+        pres,
+        layouts["picture_with_title_and_content"],
+        title="Empleos totales",
+        text_left="La zona metropolitana tiene un total de ",
+        highlight=f"{total_jobs:,.0f}",
+        text_right=" empleos.",
+        picture_path=jobs_figure_path,
+        color=RGB_BLUE,
+    )
+
+    # add_single_picture_slide(pres, layouts["picture_with_title_and_content"], picture_path=jobs_figure_path, title="Número total de empleos")
 
     return pres
 
@@ -305,19 +331,24 @@ def generate_single_slide(
         "lost_pop_after_2000": AssetIn(key=["stats", "lost_pop_after_2000"]),
         "built_after_2000": AssetIn(key=["stats", "built_after_2000"]),
         "pop_df": AssetIn(key=["stats", "population"]),
+        "total_jobs": AssetIn(key=["stats", "total_jobs"]),
         "built_df": AssetIn(key=["stats", "built_area"]),
         "built_urban_df": AssetIn(key=["stats", "built_urban_area"]),
         "pg_figure_path": AssetIn(
-            key=["plot", "population_grid"], input_manager_key="path_manager"
+            key=["plot", "population_grid"],
+            input_manager_key="path_manager",
         ),
         "built_figure_path": AssetIn(
-            key=["plot", "built"], input_manager_key="path_manager"
+            key=["plot", "built"],
+            input_manager_key="path_manager",
         ),
         "income_figure_path": AssetIn(
-            key=["plot", "income"], input_manager_key="path_manager"
+            key=["plot", "income"],
+            input_manager_key="path_manager",
         ),
         "jobs_figure_path": AssetIn(
-            key=["plot", "jobs"], input_manager_key="path_manager"
+            key=["plot", "jobs"],
+            input_manager_key="path_manager",
         ),
     },
     partitions_def=zone_partitions,
@@ -325,9 +356,10 @@ def generate_single_slide(
 )
 def slides(
     context: dg.AssetExecutionContext,
-    zone_names_resource: ZonesMapStrResource,
+    zone_config_resource: ConfigResource,
     lost_pop_after_2000: float,
     built_after_2000: float,
+    total_jobs: float,
     pop_df: pd.DataFrame,
     built_df: pd.DataFrame,
     built_urban_df: pd.DataFrame,
@@ -337,9 +369,10 @@ def slides(
     jobs_figure_path: Path,
 ) -> PresentationType:
     return generate_single_slide(
-        name=zone_names_resource.zones[context.partition_key],
+        name=zone_config_resource.names[context.partition_key],
         lost_pop_after_2000=lost_pop_after_2000,
         built_after_2000=built_after_2000,
+        total_jobs=total_jobs,
         pop_df=pop_df,
         built_df=built_df,
         built_urban_df=built_urban_df,
@@ -347,117 +380,4 @@ def slides(
         pg_figure_path=pg_figure_path,
         income_figure_path=income_figure_path,
         jobs_figure_path=jobs_figure_path,
-    )
-    # return generate_slides(
-    #     id_list=wanted_zones_resource.zones,
-    #     name_map=zone_names_resource,
-    #     lost_pop_after_2000=lost_pop_after_2000,
-    #     built_after_2000=built_after_2000,
-    #     pop_df=pop_df,
-    #     built_df=built_df,
-    #     built_urban_df=built_urban_df,
-    #     pg_figure_paths=pg_figure_paths,
-    #     built_figure_paths=built_figure_paths,
-    #     income_figure_paths=income_figure_paths,
-    #     jobs_figure_paths=jobs_figure_paths,
-    # )
-
-
-@asset(
-    ins={
-        "lost_pop_after_2000": AssetIn(key=["stats_mun", "lost_pop_after_2000"]),
-        "built_after_2000": AssetIn(key=["stats_mun", "built_after_2000"]),
-        "pop_df": AssetIn(key=["stats_mun", "population"]),
-        "built_df": AssetIn(key=["stats_mun", "built_area"]),
-        "built_urban_df": AssetIn(key=["stats_mun", "built_urban_area"]),
-        "pg_figure_paths": AssetIn(
-            key=["plot_mun", "population_grid"], input_manager_key="path_manager"
-        ),
-        "built_figure_paths": AssetIn(
-            key=["plot_mun", "built"], input_manager_key="path_manager"
-        ),
-        "income_figure_paths": AssetIn(
-            key=["plot_mun", "income"], input_manager_key="path_manager"
-        ),
-        "jobs_figure_paths": AssetIn(
-            key=["plot_mun", "jobs"], input_manager_key="path_manager"
-        ),
-    },
-    io_manager_key="presentation_manager",
-)
-def slides_mun(
-    wanted_muns_resource: ZonesListResource,
-    mun_names_resource: ZonesMapStrResource,
-    lost_pop_after_2000: dict[str, Optional[float]],
-    built_after_2000: dict[str, Optional[float]],
-    pop_df: dict[str, Optional[pd.DataFrame]],
-    built_df: dict[str, Optional[pd.DataFrame]],
-    built_urban_df: dict[str, Optional[pd.DataFrame]],
-    pg_figure_paths: dict[str, Path],
-    built_figure_paths: dict[str, Path],
-    income_figure_paths: dict[str, Path],
-    jobs_figure_paths: dict[str, Path],
-) -> PresentationType:
-    return generate_slides(
-        id_list=wanted_muns_resource.zones,
-        name_map=mun_names_resource,
-        lost_pop_after_2000=lost_pop_after_2000,
-        built_after_2000=built_after_2000,
-        pop_df=pop_df,
-        built_df=built_df,
-        built_urban_df=built_urban_df,
-        pg_figure_paths=pg_figure_paths,
-        built_figure_paths=built_figure_paths,
-        income_figure_paths=income_figure_paths,
-        jobs_figure_paths=jobs_figure_paths,
-    )
-
-
-@asset(
-    ins={
-        "lost_pop_after_2000": AssetIn(key=["stats_trimmed", "lost_pop_after_2000"]),
-        "built_after_2000": AssetIn(key=["stats_trimmed", "built_after_2000"]),
-        "pop_df": AssetIn(key=["stats_trimmed", "population"]),
-        "built_df": AssetIn(key=["stats_trimmed", "built_area"]),
-        "built_urban_df": AssetIn(key=["stats_trimmed", "built_urban_area"]),
-        "pg_figure_paths": AssetIn(
-            key=["plot_trimmed", "population_grid"], input_manager_key="path_manager"
-        ),
-        "built_figure_paths": AssetIn(
-            key=["plot_trimmed", "built"], input_manager_key="path_manager"
-        ),
-        "income_figure_paths": AssetIn(
-            key=["plot_trimmed", "income"], input_manager_key="path_manager"
-        ),
-        "jobs_figure_paths": AssetIn(
-            key=["plot_trimmed", "jobs"], input_manager_key="path_manager"
-        ),
-    },
-    io_manager_key="presentation_manager",
-)
-def slides_trimmed(
-    wanted_trimmed_resource: ZonesListResource,
-    zone_names_resource: ZonesMapStrResource,
-    lost_pop_after_2000: dict[str, Optional[float]],
-    built_after_2000: dict[str, Optional[float]],
-    pop_df: dict[str, Optional[pd.DataFrame]],
-    built_df: dict[str, Optional[pd.DataFrame]],
-    built_urban_df: dict[str, Optional[pd.DataFrame]],
-    pg_figure_paths: dict[str, Path],
-    built_figure_paths: dict[str, Path],
-    income_figure_paths: dict[str, Path],
-    jobs_figure_paths: dict[str, Path],
-) -> PresentationType:
-    return generate_slides(
-        id_list=wanted_trimmed_resource.zones,
-        name_map=zone_names_resource,
-        lost_pop_after_2000=lost_pop_after_2000,
-        built_after_2000=built_after_2000,
-        pop_df=pop_df,
-        built_df=built_df,
-        built_urban_df=built_urban_df,
-        pg_figure_paths=pg_figure_paths,
-        built_figure_paths=built_figure_paths,
-        income_figure_paths=income_figure_paths,
-        jobs_figure_paths=jobs_figure_paths,
     )

@@ -1,10 +1,11 @@
-import dagster as dg
+from pathlib import Path
+
 import geopandas as gpd
 import pandas as pd
 
+import dagster as dg
 from jat_slides.partitions import zone_partitions
 from jat_slides.resources import PathResource
-from pathlib import Path
 
 
 @dg.asset(name="geo", key_prefix="jobs", io_manager_key="gpkg_manager")
@@ -14,7 +15,8 @@ def jobs_geo(path_resource: PathResource) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(
         (
             pd.read_csv(
-                jobs_path, usecols=["num_empleos_esperados", "longitud", "latitud"]
+                jobs_path,
+                usecols=["num_empleos_esperados", "longitud", "latitud"],
             )
             .assign(geometry=lambda x: gpd.points_from_xy(x["longitud"], x["latitud"]))
             .drop(columns=["longitud", "latitud"])
@@ -35,13 +37,16 @@ def jobs_geo(path_resource: PathResource) -> gpd.GeoDataFrame:
     io_manager_key="gpkg_manager",
 )
 def jobs_partitioned(
-    jobs: gpd.GeoDataFrame, df_agebs: gpd.GeoDataFrame
+    jobs: gpd.GeoDataFrame,
+    df_agebs: gpd.GeoDataFrame,
 ) -> gpd.GeoDataFrame:
-    return jobs.sjoin(
-        df_agebs[["geometry"]],
-        how="inner",
-        predicate="within",
-    ).drop(columns=["index_right"])
+    return gpd.GeoDataFrame(
+        jobs.sjoin(
+            df_agebs[["geometry"]].to_crs(jobs.crs),
+            how="inner",
+            predicate="within",
+        ).drop(columns=["index_right"])
+    )
 
 
 @dg.asset(
@@ -67,7 +72,7 @@ def jobs_reprojected(
     )
     df_mesh = gpd.read_file(mesh_path).drop(columns=["pop_fraction"])
     joined = df_mesh.sjoin(jobs, how="inner", predicate="contains").drop(
-        columns=["index_right"]
+        columns=["index_right"],
     )
     job_count = joined.groupby("codigo")["num_empleos_esperados"].sum()
 

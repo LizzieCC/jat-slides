@@ -1,17 +1,16 @@
-import rasterio.mask  # pylint: disable=unused-import
+from pathlib import Path
+from typing import assert_never
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio as rio
-
+import rasterio.mask  # pylint: disable=unused-import
 from affine import Affine
-from dagster import graph, graph_asset, op, AssetIn, Out
+
+from dagster import AssetIn, Out, graph, graph_asset, op
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
-from pathlib import Path
-from typing import assert_never
-
 
 YEARS = (1990, 2000, 2010, 2020)
 
@@ -19,7 +18,8 @@ YEARS = (1990, 2000, 2010, 2020)
 def load_built_area_rasters_factory(year: int):
     @op(name=f"load_built_area_rasters_{year}", out={"data": Out(), "transform": Out()})
     def _op(
-        path_resource: PathResource, bounds: dict[int, list]
+        path_resource: PathResource,
+        bounds: dict[int, list],
     ) -> tuple[np.ndarray, Affine]:
         fpath = Path(path_resource.ghsl_path) / f"BUILT_100/{year}.tif"
         with rio.open(fpath, nodata=65535) as ds:
@@ -39,7 +39,8 @@ load_built_area_rasters_ops = {
 # pylint: disable=unused-argument
 @op(out=Out(io_manager_key="csv_manager"))
 def reduce_area_rasters(
-    rasters: list[np.ndarray], transforms: list[Affine]
+    rasters: list[np.ndarray],
+    transforms: list[Affine],
 ) -> pd.DataFrame:
     out = []
     for year, arr in zip(YEARS, rasters):
@@ -56,7 +57,8 @@ def get_bounds(
 ) -> dict[int, list]:
     bounds = {}
     for year, agebs in zip(
-        (1990, 2000, 2010, 2020), (agebs_1990, agebs_2000, agebs_2010, agebs_2020)
+        (1990, 2000, 2010, 2020),
+        (agebs_1990, agebs_2000, agebs_2010, agebs_2020),
     ):
         bounds[year] = agebs["geometry"].to_numpy().tolist()
     return bounds

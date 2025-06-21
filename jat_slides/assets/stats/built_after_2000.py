@@ -1,7 +1,7 @@
 import numpy as np
-
 from affine import Affine
-from dagster import asset, AssetIn
+
+from dagster import AssetIn, asset
 from jat_slides.partitions import mun_partitions, zone_partitions
 
 

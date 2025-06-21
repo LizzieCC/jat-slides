@@ -1,17 +1,17 @@
-from pathlib import Path
-from typing import Optional, Union
-
 import os
+from pathlib import Path
+from typing import assert_never
 
-import dagster as dg
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio as rio
-
-from pptx.presentation import Presentation
 from affine import Affine
+from matplotlib.figure import Figure
+from pptx.presentation import Presentation
+
+import dagster as dg
 from dagster import (
     ConfigurableIOManager,
     InputContext,
@@ -19,8 +19,6 @@ from dagster import (
     ResourceDependency,
 )
 from jat_slides.resources import PathResource, path_resource
-from matplotlib.figure import Figure
-from typing import assert_never
 
 
 class BaseManager(ConfigurableIOManager):
@@ -28,16 +26,17 @@ class BaseManager(ConfigurableIOManager):
     extension: str
 
     def _get_path(
-        self, context: Union[InputContext, OutputContext]
-    ) -> Union[Path, dict[str, Path]]:
-        out_path = Path(self.path_resource.out_path)
+        self,
+        context: InputContext | OutputContext,
+    ) -> Path | dict[str, Path]:
+        out_path = Path(self.path_resource.data_path) / "generated"
         fpath = out_path / "/".join(context.asset_key.path)
 
         if context.has_asset_partitions:
-            try:
+            if len(context.asset_partition_keys) == 1:
                 final_path = fpath / context.asset_partition_key
                 final_path = final_path.with_suffix(final_path.suffix + self.extension)
-            except Exception:
+            else:
                 final_path = {}
                 for key in context.asset_partition_keys:
                     temp_path = fpath / key
@@ -50,11 +49,16 @@ class BaseManager(ConfigurableIOManager):
 
 
 class DataFrameIOManager(BaseManager):
-    def _is_geodataframe(self):
+    def _is_geodataframe(self) -> bool:
         return self.extension in (".gpkg", ".geojson")
 
     def handle_output(self, context: OutputContext, obj: gpd.GeoDataFrame) -> None:
         out_path = self._get_path(context)
+
+        if isinstance(out_path, dict):
+            err = "Saving multiple files is not implemented for DataFrameIOManager."
+            raise NotImplementedError(err)
+
         out_path.parent.mkdir(exist_ok=True, parents=True)
 
         if self._is_geodataframe():
@@ -62,14 +66,14 @@ class DataFrameIOManager(BaseManager):
         else:
             obj.to_csv(out_path, index=False)
 
-    def load_input(self, context: InputContext) -> gpd.GeoDataFrame:
+    def load_input(self, context: InputContext) -> gpd.GeoDataFrame | pd.DataFrame:
         path = self._get_path(context)
         if isinstance(path, os.PathLike):
             if self._is_geodataframe():
                 return gpd.read_file(path)
-            else:
-                return pd.read_csv(path)
-        elif isinstance(path, dict):
+            return pd.read_csv(path)
+
+        if isinstance(path, dict):
             out_dict = {}
             for key, fpath in path.items():
                 if fpath.exists():
@@ -81,6 +85,9 @@ class DataFrameIOManager(BaseManager):
                     out_dict[key] = None
             return out_dict
 
+        err = "Loading multiple files is not implemented for DataFrameIOManager."
+        raise NotImplementedError(err)
+
 
 class RasterIOManager(BaseManager):
     def _get_raster_and_transform(self, fpath: Path) -> tuple[np.ndarray, Affine]:
@@ -89,7 +96,9 @@ class RasterIOManager(BaseManager):
             transform = ds.transform
         return data, transform
 
-    def handle_output(self, context: OutputContext, obj: tuple[np.ndarray, Affine]):
+    def handle_output(
+        self, context: OutputContext, obj: tuple[np.ndarray, Affine]
+    ) -> None:
         fpath = self._get_path(context)
         fpath.parent.mkdir(exist_ok=True, parents=True)
 
@@ -114,14 +123,13 @@ class RasterIOManager(BaseManager):
             data, transform = self._get_raster_and_transform(path)
             return data, transform
 
-        elif isinstance(path, dict):
+        if isinstance(path, dict):
             out_dict = {}
             for key, fpath in path.items():
                 out_dict[key] = self._get_raster_and_transform(fpath)
             return out_dict
 
-        else:
-            assert_never(type(path))
+        assert_never(type(path))
 
 
 class ReprojectedRasterIOManager(RasterIOManager):
@@ -130,7 +138,11 @@ class ReprojectedRasterIOManager(RasterIOManager):
     def _get_raster_and_transform(self, fpath: Path) -> tuple[np.ndarray, Affine]:
         with rio.open(fpath) as ds:
             transform, width, height = rio.warp.calculate_default_transform(
-                ds.crs, self.crs, ds.width, ds.height, *ds.bounds
+                ds.crs,
+                self.crs,
+                ds.width,
+                ds.height,
+                *ds.bounds,
             )
 
             data = np.zeros((height, width), dtype=int)
@@ -158,7 +170,7 @@ class PresentationIOManager(BaseManager):
 
 
 class PlotFigIOManager(BaseManager):
-    def handle_output(self, context: OutputContext, obj: Figure):
+    def handle_output(self, context: OutputContext, obj: Figure) -> None:
         fpath = self._get_path(context)
         fpath.parent.mkdir(exist_ok=True, parents=True)
 
@@ -166,7 +178,7 @@ class PlotFigIOManager(BaseManager):
         obj.clf()
         plt.close(obj)
 
-    def load_input(self, context: InputContext):
+    def load_input(self, context: InputContext) -> None:
         raise NotImplementedError
 
 
@@ -174,7 +186,7 @@ class PathIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj) -> None:
         raise NotImplementedError
 
-    def load_input(self, context: InputContext) -> Union[Path, dict[str, Path]]:
+    def load_input(self, context: InputContext) -> Path | dict[str, Path]:
         path = self._get_path(context)
         if isinstance(path, os.PathLike):
             assert path.exists()
@@ -191,17 +203,18 @@ class TextIOManager(BaseManager):
             f.write(obj)
 
     def load_input(
-        self, context: InputContext
-    ) -> Union[float, dict[str, Optional[float]]]:
+        self,
+        context: InputContext,
+    ) -> float | dict[str, float | None]:
         fpath = self._get_path(context)
         if isinstance(fpath, os.PathLike):
-            with open(fpath, "r", encoding="utf8") as f:
+            with open(fpath, encoding="utf8") as f:
                 out = float(f.readline().strip("\n"))
         else:
             out = {}
             for key, subpath in fpath.items():
                 if subpath.exists():
-                    with open(subpath, "r", encoding="utf8") as f:
+                    with open(subpath, encoding="utf8") as f:
                         out[key] = float(f.readline().strip("\n"))
                 else:
                     out[key] = None
@@ -215,10 +228,13 @@ gpkg_manager = DataFrameIOManager(path_resource=path_resource, extension=".gpkg"
 memory_manager = dg.InMemoryIOManager()
 raster_manager = RasterIOManager(path_resource=path_resource, extension=".tif")
 reprojected_raster_manager = ReprojectedRasterIOManager(
-    path_resource=path_resource, extension=".tif", crs="EPSG:4326"
+    path_resource=path_resource,
+    extension=".tif",
+    crs="EPSG:4326",
 )
 presentation_manger = PresentationIOManager(
-    path_resource=path_resource, extension=".pptx"
+    path_resource=path_resource,
+    extension=".pptx",
 )
 plot_manager = PlotFigIOManager(path_resource=path_resource, extension=".jpg")
 path_manager = PathIOManager(path_resource=path_resource, extension=".jpg")
@@ -236,5 +252,5 @@ defs = dg.Definitions(
         "plot_manager": plot_manager,
         "path_manager": path_manager,
         "text_manager": text_manager,
-    }
+    },
 )

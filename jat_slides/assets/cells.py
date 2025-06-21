@@ -1,10 +1,11 @@
-import dagster as dg
+from pathlib import Path
+
 import geopandas as gpd
 import pandas as pd
 
+import dagster as dg
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
-from pathlib import Path
 
 
 @dg.asset(
@@ -12,9 +13,11 @@ from pathlib import Path
     key_prefix="cells",
     partitions_def=zone_partitions,
     io_manager_key="gpkg_manager",
+    group_name="cells_base",
 )
 def cells_base(
-    context: dg.AssetExecutionContext, path_resource: PathResource
+    context: dg.AssetExecutionContext,
+    path_resource: PathResource,
 ) -> gpd.GeoDataFrame:
     fpath = (
         Path(path_resource.pg_path)
@@ -32,8 +35,13 @@ def cells_base(
     },
     partitions_def=zone_partitions,
     io_manager_key="gpkg_manager",
+    group_name="cells_trimmed",
 )
 def cells_trimmed(agebs: gpd.GeoDataFrame, cells: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    if cells.crs is None:
+        err = "Cells GeoDataFrame has no CRS"
+        raise ValueError(err)
+
     agebs = agebs.to_crs(cells.crs)
     idx = cells.sjoin(agebs[["geometry"]]).index.unique()
     return cells.loc[idx]
@@ -45,6 +53,7 @@ def cells_trimmed(agebs: gpd.GeoDataFrame, cells: gpd.GeoDataFrame) -> gpd.GeoDa
     ins={"agebs": dg.AssetIn(["muns", "2020"])},
     partitions_def=mun_partitions,
     io_manager_key="gpkg_manager",
+    group_name="cells_mun",
 )
 def cells_mun(
     context: dg.AssetExecutionContext,
@@ -66,5 +75,5 @@ def cells_mun(
     joined = df.sjoin(agebs.to_crs("EPSG:6372"), how="inner", predicate="intersects")[
         "codigo"
     ].unique()
-    df = df[df["codigo"].isin(joined)]
-    return df
+
+    return df.loc[df["codigo"].isin(joined)]
