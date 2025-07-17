@@ -1,3 +1,7 @@
-run_coordinator:
-  module: dagster.core.run_coordinator
-  class: QueuedRunCoordinator
+concurrency:
+  runs:
+    max_concurrent_runs: 15
+    tag_concurrency_limits:
+      - key: 'concurrency'
+        value: 'limited'
+        limit: 3
