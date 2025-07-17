@@ -14,9 +14,9 @@ from jat_slides.assets.maps.common import (
     generate_figure,
     get_bounds_base,
     get_bounds_trimmed,
+    get_labels_zone,
     get_linewidth,
     intersect_geometries,
-    get_labels_zone,
 )
 from jat_slides.partitions import zone_partitions
 from jat_slides.resources import PathResource

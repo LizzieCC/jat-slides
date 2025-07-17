@@ -16,6 +16,7 @@ from jat_slides.assets.maps.common import (
     get_bounds_mun,
     get_bounds_trimmed,
     get_labels_zone,
+    get_legend_pos_base,
 )
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
@@ -48,6 +49,7 @@ def plot_raster(
     bounds: tuple[float, float, float, float],
     data_and_transform: tuple[np.ndarray, Affine],
     labels: dict[str, bool],
+    legend_pos: str,
 ) -> Figure:
     state = context.partition_key.split(".")[0]
 
@@ -99,7 +101,8 @@ def plot_raster(
 def built_plot(data_and_transform: tuple[np.ndarray, Affine]) -> Figure:
     bounds = get_bounds_base()
     labels = get_labels_zone()
-    return plot_raster(bounds, data_and_transform, labels=labels)
+    legend_pos = get_legend_pos_base()
+    return plot_raster(bounds, data_and_transform, labels=labels, legend_pos=legend_pos)
 
 
 @dg.graph_asset(

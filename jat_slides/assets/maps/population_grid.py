@@ -14,8 +14,9 @@ from jat_slides.assets.maps.common import (
     get_bounds_mun,
     get_bounds_trimmed,
     get_cmap_bounds,
-    get_linewidth,
     get_labels_zone,
+    get_legend_pos_base,
+    get_linewidth,
 )
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
@@ -29,6 +30,7 @@ def plot_dataframe(
     df: gpd.GeoDataFrame,
     lw: float,
     labels: dict[str, bool],
+    legend_pos: str,
 ) -> Figure:
     state = context.partition_key.split(".")[0]
 
@@ -63,7 +65,7 @@ def plot_dataframe(
         aspect=None,
     )
 
-    add_pop_legend(cmap_bounds, ax=ax, cmap=cmap_rdbu)
+    add_pop_legend(cmap_bounds, ax=ax, cmap=cmap_rdbu, legend_pos=legend_pos)
 
     overlay_path = Path(path_resource.data_path) / "overlays"
     fpath = overlay_path / f"{context.partition_key}.gpkg"
@@ -101,8 +103,9 @@ def population_grid_plot_factory(suffix: str) -> dg.AssetsDefinition:
         bounds = op()
         lw = get_linewidth()
         labels = get_labels_zone()
+        legend_pos = get_legend_pos_base()
 
-        return plot_dataframe(bounds, df, lw, labels)
+        return plot_dataframe(bounds, df, lw, labels, legend_pos=legend_pos)
 
     return _asset
 

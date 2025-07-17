@@ -11,8 +11,9 @@ from jat_slides.assets.maps.common import (
     get_bounds_base,
     get_bounds_mun,
     get_bounds_trimmed,
-    get_linewidth,
     get_labels_zone,
+    get_legend_pos_base,
+    get_linewidth,
     intersect_geometries,
     update_categorical_legend,
 )
@@ -30,6 +31,7 @@ def plot_income(
     bounds: tuple[float, float, float, float],
     lw: float,
     labels: dict[str, bool],
+    legend_pos: str,
 ) -> Figure:
     state = context.partition_key.split(".")[0]
 
@@ -69,6 +71,7 @@ def plot_income(
         title="Ingreso anual per cápita\n(miles de USD)",
         fmt=".2f",
         cmap=cmap,
+        legend_pos=legend_pos,
     )
 
     overlay_path = Path(path_resource.data_path) / "overlays"
@@ -89,7 +92,8 @@ def income_plot(df: gpd.GeoDataFrame) -> Figure:
     lw = get_linewidth()
     bounds = get_bounds_base()
     labels = get_labels_zone()
-    return plot_income(df, bounds, lw, labels)
+    legend_pos = get_legend_pos_base()
+    return plot_income(df, bounds, lw, labels, legend_pos)
 
 
 @dg.graph_asset(

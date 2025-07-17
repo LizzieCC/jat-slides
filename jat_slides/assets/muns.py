@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import assert_never
 
 import geopandas as gpd
 import pandas as pd

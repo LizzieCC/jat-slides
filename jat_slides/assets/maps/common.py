@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Literal
 
 import contextily as cx
 import geopandas as gpd
@@ -12,13 +13,10 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 from shapely.plotting import plot_line
-from typing import Literal
 
 import dagster as dg
 from jat_slides.resources import (
     ConfigResource,
-    ZonesMapFloatResource,
-    ZonesMapListResource,
 )
 
 cmap_rdbu = mcol.LinearSegmentedColormap.from_list(
@@ -39,7 +37,7 @@ def get_cmap_bounds(differences, n_steps) -> np.ndarray:
     )
 
 
-def add_pop_legend(bounds, *, ax, cmap: mcol.Colormap):
+def add_pop_legend(bounds, *, ax, cmap: mcol.Colormap, legend_pos: str = "upper right"):
     cmap = cmap.resampled(7)
 
     patches = []
@@ -56,6 +54,7 @@ def add_pop_legend(bounds, *, ax, cmap: mcol.Colormap):
         title="Cambio de población\n(2020 - 2000)",
         alignment="left",
         framealpha=1,
+        loc=legend_pos,
     ).set_zorder(9999)
 
 
@@ -258,40 +257,43 @@ def generate_figure(
     return fig, ax
 
 
-@dg.op
-def get_bounds_base(
-    context: dg.OpExecutionContext,
-    zone_config_resource: ConfigResource,
-) -> tuple[float, float, float, float]:
-    out = tuple(zone_config_resource.bounds[context.partition_key])
-    if len(out) != 4:
-        err = f"Expected 4 bounds, got {len(out)}: {out}"
-        raise ValueError(err)
-    return out
+def get_bounds_op_factory(level: str) -> dg.OpDefinition:
+    @dg.op(
+        name=f"get_bounds_{level}", required_resource_keys={f"{level}_config_resource"}
+    )
+    def _op(
+        context: dg.OpExecutionContext,
+    ) -> tuple[float, float, float, float]:
+        config_resource = getattr(context.resources, f"{level}_config_resource", None)
+        if config_resource is None:
+            err = f"Resource '{level}_config_resource' not found in context.resources"
+            raise ValueError(err)
+
+        out = tuple(config_resource.bounds[context.partition_key])
+        if len(out) != 4:
+            err = f"Expected 4 bounds, got {len(out)}: {out}"
+            raise ValueError(err)
+        return out
+
+    return _op
 
 
-@dg.op
-def get_bounds_mun(
-    context: dg.OpExecutionContext,
-    mun_config_resource: ConfigResource,
-) -> tuple[float, float, float, float]:
-    out = tuple(mun_config_resource.bounds[context.partition_key])
-    if len(out) != 4:
-        err = f"Expected 4 bounds, got {len(out)}: {out}"
-        raise ValueError(err)
-    return out
+def get_legend_pos_op_factory(level: str) -> dg.OpDefinition:
+    @dg.op(
+        name=f"get_legend_pos_{level}",
+        required_resource_keys={f"{level}_config_resource"},
+    )
+    def _op(context: dg.OpExecutionContext) -> str:
+        config_resource = getattr(context.resources, f"{level}_config_resource", None)
+        if config_resource is None:
+            err = f"Resource '{level}_config_resource' not found in context.resources"
+            raise ValueError(err)
 
+        if context.partition_key in config_resource.legend_pos:
+            return config_resource.legend_pos[context.partition_key]
+        return "upper right"
 
-@dg.op
-def get_bounds_trimmed(
-    context: dg.OpExecutionContext,
-    trimmed_config_resource: ConfigResource,
-) -> tuple[float, float, float, float]:
-    out = tuple(trimmed_config_resource.bounds[context.partition_key])
-    if len(out) != 4:
-        err = f"Expected 4 bounds, got {len(out)}: {out}"
-        raise ValueError(err)
-    return out
+    return _op
 
 
 @dg.op
@@ -313,10 +315,7 @@ def get_labels_zone(
 
 
 def update_categorical_legend(
-    ax: Axes,
-    title: str,
-    fmt: str,
-    cmap: mcol.Colormap,
+    ax: Axes, title: str, fmt: str, cmap: mcol.Colormap, legend_pos: str
 ) -> None:
     leg = ax.get_legend()
     leg.set_title(title)
@@ -339,6 +338,7 @@ def update_categorical_legend(
         title=title,
         alignment="left",
         framealpha=1,
+        loc=legend_pos,
     ).set_zorder(9999)
 
 
@@ -373,3 +373,12 @@ def add_overlay(fpath: Path, ax: Axes) -> None:
     if fpath.exists():
         geom = gpd.read_file(fpath).to_crs("EPSG:4326")["geometry"].item()
         plot_line(geom, ax=ax, linewidth=3, color="k", add_points=False)
+
+
+get_bounds_base = get_bounds_op_factory("zone")
+get_bounds_mun = get_bounds_op_factory("mun")
+get_bounds_trimmed = get_bounds_op_factory("trimmed")
+
+get_legend_pos_base = get_legend_pos_op_factory("zone")
+get_legend_pos_mun = get_legend_pos_op_factory("mun")
+get_legend_pos_trimmed = get_legend_pos_op_factory("trimmed")
