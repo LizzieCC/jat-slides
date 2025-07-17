@@ -188,8 +188,6 @@ class PathIOManager(BaseManager):
 
     def load_input(self, context: InputContext) -> Path | dict[str, Path]:
         path = self._get_path(context)
-        if isinstance(path, os.PathLike):
-            assert path.exists()
         return path
 
 

@@ -24,14 +24,18 @@ def income(
     with open(segregation_path / "short_to_long_map.json", encoding="utf8") as f:
         long_to_short_map = {value: key for key, value in json.load(f).items()}
 
-    return (
-        gpd.read_file(
-            segregation_path
-            / f"incomes/{long_to_short_map[context.partition_key]}.gpkg",
+    if context.partition_key in long_to_short_map:
+        return (
+            gpd.read_file(
+                segregation_path
+                / "incomes"
+                / f"{long_to_short_map[context.partition_key]}.gpkg",
+            )
+            .dropna(subset=["income_pc"])
+            .to_crs("EPSG:4326")
         )
-        .dropna(subset=["income_pc"])
-        .to_crs("EPSG:4326")
-    )
+
+    return gpd.GeoDataFrame(geometry=[])
 
 
 @dg.asset(

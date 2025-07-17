@@ -3,22 +3,20 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
-from dagster import AssetExecutionContext, asset
+import dagster as dg
 from jat_slides.partitions import mun_partitions
 from jat_slides.resources import PathResource
 
 
-def muns_factory(year: int):
-    infix = "shaped"
-
-    @asset(
+def muns_factory(year: int) -> dg.AssetsDefinition:
+    @dg.asset(
         name=str(year),
         key_prefix="muns",
         partitions_def=mun_partitions,
         io_manager_key="gpkg_manager",
     )
     def _asset(
-        context: AssetExecutionContext,
+        context: dg.AssetExecutionContext,
         path_resource: PathResource,
     ) -> gpd.GeoDataFrame:
         total_chars = len(context.partition_key)
@@ -27,18 +25,22 @@ def muns_factory(year: int):
         else:
             ent = context.partition_key[:2]
 
-        agebs_dir_path = Path(path_resource.pg_path) / f"zone_agebs/{infix}/{year}"
+        agebs_dir_path = (
+            Path(path_resource.pg_path) / "zone_agebs" / "shaped" / str(year)
+        )
 
-        df = []
-        for path in agebs_dir_path.glob(f"{ent}.*.gpkg"):
-            df.append(gpd.read_file(path).to_crs("ESRI:54009"))
-
+        df = [
+            gpd.read_file(path).to_crs("ESRI:54009")
+            for path in agebs_dir_path.glob(f"{ent}.*.gpkg")
+        ]
         df = pd.concat(df)
         df["geometry"] = df["geometry"].make_valid()
 
         code_prefix = context.partition_key.rjust(5, "0")
-        df = df.loc[df["CVEGEO"].str.startswith(code_prefix), ["POBTOT", "geometry"]]
-        return df
+
+        return gpd.GeoDataFrame(
+            df.loc[df["CVEGEO"].str.startswith(code_prefix), ["POBTOT", "geometry"]]
+        )
 
     return _asset
 

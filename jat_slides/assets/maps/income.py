@@ -53,6 +53,10 @@ def plot_income(
         state_text_kwargs={"fontsize": 7, "color": "#006400", "alpha": 0.9},
         state=state,
     )
+
+    if len(df) == 0:
+        return fig
+
     df.plot(
         column="income_pc",
         scheme="natural_breaks",
