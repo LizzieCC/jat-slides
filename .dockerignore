@@ -1,0 +1,16 @@
+# Bytecode & VCS
+__pycache__/
+*.pyc
+.git
+.gitignore
+
+# Local data & outputs
+input/
+output/
+dagster/
+logs/
+.history/
+
+# IDE
+.vscode/
+.idea/

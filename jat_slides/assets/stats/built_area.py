@@ -21,7 +21,7 @@ def load_built_area_rasters_factory(year: int):
         path_resource: PathResource,
         bounds: dict[int, list],
     ) -> tuple[np.ndarray, Affine]:
-        fpath = Path(path_resource.ghsl_path) / f"BUILT_100/{year}.tif"
+        fpath = Path(path_resource.ghsl_path) / f"built_100/{year}.tif"
         with rio.open(fpath, nodata=65535) as ds:
             data, transform = rio.mask.mask(ds, bounds[year], crop=True, nodata=0)
 

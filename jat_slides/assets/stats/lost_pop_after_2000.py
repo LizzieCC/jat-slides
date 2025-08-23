@@ -1,7 +1,7 @@
 import geopandas as gpd
 
 import dagster as dg
-from dagster._core.definitions.assets import AssetsDefinition
+from dagster import AssetsDefinition
 from jat_slides.partitions import mun_partitions, zone_partitions
 
 

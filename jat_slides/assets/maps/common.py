@@ -16,7 +16,7 @@ from shapely.plotting import plot_line
 
 import dagster as dg
 from jat_slides.resources import (
-    ConfigResource,
+    ConfigResource
 )
 
 cmap_rdbu = mcol.LinearSegmentedColormap.from_list(
@@ -218,12 +218,8 @@ def generate_figure(
 
     if add_mun_bounds:
         add_polygon_bounds(
-            Path(
-                "C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/final/framework/mun/2020.gpkg"
-            ),
-            Path(
-                f"C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"
-            ),
+            (Path(os.environ["POPULATION_GRIDS_PATH"]) / "final/framework/mun/2020.gpkg"),
+            (Path(os.environ["POPULATION_GRIDS_PATH"])/ "initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"),
             xmin=xmin,
             ymin=ymin,
             xmax=xmax,
@@ -237,12 +233,8 @@ def generate_figure(
 
     if add_state_bounds:
         add_polygon_bounds(
-            Path(
-                "C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/final/framework/state/2020.gpkg"
-            ),
-            Path(
-                f"C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"
-            ),
+            (Path(os.environ["POPULATION_GRIDS_PATH"]) / "final/framework/state/2020.gpkg"),
+            (Path(os.environ["POPULATION_GRIDS_PATH"]) / "initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"),
             xmin=xmin,
             ymin=ymin,
             xmax=xmax,

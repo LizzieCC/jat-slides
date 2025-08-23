@@ -173,3 +173,8 @@ dagster/*
 .DS_Store
 *.ipynb
 *.gpkg
+/jat_slides_data/jobs
+/jat_slides_data/population_grids/initial
+/jat_slides_data/segregation
+output/generated/built/18.1.01.tif
+/output
