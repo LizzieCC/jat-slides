@@ -10,6 +10,7 @@ from affine import Affine
 import dagster as dg
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
+from utils.utils_adls import create_container_sas, rasterio_env_kwargs
 
 YEARS = range(1975, 2021, 5)
 
@@ -21,17 +22,21 @@ def load_built_rasters_factory(year: int) -> dg.OpDefinition:
     )
     def _op(path_resource: PathResource, bounds: list) -> tuple[np.ndarray, Affine]:
         fpath = Path(path_resource.ghsl_path) / f"built_100" / f"{year}.tif"
-        with rio.open(fpath, nodata=65535) as ds:
-            data, transform = rio_mask.mask(ds, bounds, crop=True, nodata=0)
+        env_kwargs = rasterio_env_kwargs("datalake",
+                    account_name="cfcetlsadls",
+                    sas_token=create_container_sas(container="raw",account_name="cfcetlsadls"))
+        with rio.Env(**env_kwargs):
+            with rio.open(fpath, nodata=65535) as ds:
+                data, transform = rio_mask.mask(ds, bounds, crop=True, nodata=0)
 
-        data[data == 65535] = 0
+            data[data == 65535] = 0
 
-        mask = data[0] >= (100 * 100 * 0.2)
-        mask = mask.astype(float)
-        mask[mask == 0] = np.nan
-        mask *= year
+            mask = data[0] >= (100 * 100 * 0.2)
+            mask = mask.astype(float)
+            mask[mask == 0] = np.nan
+            mask *= year
 
-        return mask, transform
+            return mask, transform
 
     return _op
 
