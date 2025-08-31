@@ -1,4 +1,4 @@
-from pathlib import Path
+from upath import UPath as Path
 
 import matplotlib as mpl
 import numpy as np

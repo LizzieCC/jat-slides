@@ -1,4 +1,4 @@
-from pathlib import Path
+from upath import UPath as Path
 
 import geopandas as gpd
 import pandas as pd
@@ -7,7 +7,7 @@ import dagster as dg
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
 
-
+from utils.utils_adls import gdal_azure_session
 @dg.asset(
     name="base",
     key_prefix="cells",
@@ -23,7 +23,9 @@ def cells_base(
         Path(path_resource.pg_path)
         / f"differences/2000_2020/{context.partition_key}.gpkg"
     )
-    return gpd.read_file(fpath)
+    with gdal_azure_session(path=fpath):
+        df_return = gpd.read_file(fpath)
+    return df_return
 
 
 @dg.asset(
@@ -67,9 +69,11 @@ def cells_mun(
 
     diff_path = Path(path_resource.pg_path) / "differences/2000_2020"
     df = []
-    for path in diff_path.glob(f"{ent}.*.gpkg"):
-        temp = gpd.read_file(path)
-        df.append(temp)
+
+    with gdal_azure_session(path=diff_path):
+        for path in diff_path.glob(f"{ent}.*.gpkg"):
+            temp = gpd.read_file(path)
+            df.append(temp)
     df = pd.concat(df)
 
     joined = df.sjoin(agebs.to_crs("EPSG:6372"), how="inner", predicate="intersects")[

@@ -1,5 +1,6 @@
 import json
-from pathlib import Path
+from upath import UPath as Path
+
 
 import geopandas as gpd
 import pandas as pd
@@ -8,6 +9,8 @@ import dagster as dg
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
 
+from utils.utils_adls import gdal_azure_session, storage_options
+import fsspec
 
 @dg.asset(
     name="base",
@@ -21,19 +24,14 @@ def income(
 ) -> gpd.GeoDataFrame:
     segregation_path = Path(path_resource.segregation_path)
 
-    with open(segregation_path / "short_to_long_map.json", encoding="utf8") as f:
+    with fsspec.open(segregation_path / "short_to_long_map.json", encoding="utf8", **storage_options(segregation_path)) as f:
         long_to_short_map = {value: key for key, value in json.load(f).items()}
 
     if context.partition_key in long_to_short_map:
-        return (
-            gpd.read_file(
-                segregation_path
-                / "incomes"
-                / f"{long_to_short_map[context.partition_key]}.gpkg",
-            )
-            .dropna(subset=["income_pc"])
-            .to_crs("EPSG:4326")
-        )
+        full_path = (segregation_path / "incomes" / f"{long_to_short_map[context.partition_key]}.gpkg")
+        with gdal_azure_session(path=full_path):
+            df_return = gpd.read_file(full_path).dropna(subset=["income_pc"]).to_crs("EPSG:4326")
+        return df_return
 
     return gpd.GeoDataFrame(geometry=[])
 
@@ -58,10 +56,11 @@ def load_state_income_df(
         raise ValueError(err)
 
     income_path = Path(path_resource.segregation_path) / "incomes"
-
-    df = [
-        gpd.read_file(path).dropna(subset=["income_pc"])
-        for path in income_path.glob(f"M{ent}*.gpkg")
-    ]
+    
+    with gdal_azure_session(path=income_path):
+        df = [
+            gpd.read_file(path).dropna(subset=["income_pc"])
+            for path in income_path.glob(f"M{ent}*.gpkg")
+        ]
 
     return gpd.GeoDataFrame(pd.concat(df, ignore_index=True)).to_crs("EPSG:4326")

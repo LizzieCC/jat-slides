@@ -1,5 +1,5 @@
 import os
-from pathlib import Path
+from upath import UPath as Path
 from typing import assert_never
 
 import geopandas as gpd
@@ -10,6 +10,8 @@ import rasterio as rio
 from affine import Affine
 from matplotlib.figure import Figure
 from pptx.presentation import Presentation
+import fsspec
+from utils.cloud_paths import cloud_exists
 
 import dagster as dg
 from dagster import (
@@ -19,7 +21,11 @@ from dagster import (
     ResourceDependency,
 )
 from jat_slides.resources import PathResource, path_resource
+from utils.utils_adls import gdal_azure_session, storage_options
 
+import shutil
+import tempfile
+from pathlib import Path as LocalPath
 
 class BaseManager(ConfigurableIOManager):
     path_resource: ResourceDependency[PathResource]
@@ -47,6 +53,14 @@ class BaseManager(ConfigurableIOManager):
 
         return final_path
 
+    def _makedirs(self, p: Path) -> None:
+        # Only create dirs for local FS; object stores don't need them
+        if getattr(p, "protocol", "file") == "file":
+            p.parent.mkdir(parents=True, exist_ok=True) 
+
+    def _as_vsi(self, p: Path) -> str:
+        # For GDAL/Fiona/Rasterio on Azure
+        return str(p).replace("az://", "/vsiaz/") 
 
 class DataFrameIOManager(BaseManager):
     def _is_geodataframe(self) -> bool:
@@ -59,28 +73,36 @@ class DataFrameIOManager(BaseManager):
             err = "Saving multiple files is not implemented for DataFrameIOManager."
             raise NotImplementedError(err)
 
-        out_path.parent.mkdir(exist_ok=True, parents=True)
+        self._makedirs(out_path)
 
         if self._is_geodataframe():
-            obj.to_file(out_path, mode="w")
+            # Stage to local temp, then upload to az://
+            with tempfile.TemporaryDirectory() as td:
+                tmp = LocalPath(td) / "tmp.gpkg"
+                obj.to_file(tmp, driver="GPKG")
+                with fsspec.open(str(out_path), "wb", **storage_options(out_path)) as dst, open(tmp, "rb") as src:
+                    shutil.copyfileobj(src, dst)
         else:
-            obj.to_csv(out_path, index=False)
+            obj.to_csv(str(out_path), index=False, storage_options=storage_options(out_path))
 
     def load_input(self, context: InputContext) -> gpd.GeoDataFrame | pd.DataFrame:
         path = self._get_path(context)
+
         if isinstance(path, os.PathLike):
-            if self._is_geodataframe():
-                return gpd.read_file(path)
-            return pd.read_csv(path)
+            with gdal_azure_session(path=path):
+                if self._is_geodataframe():
+                    return gpd.read_file(path)
+                return pd.read_csv(str(path), storage_options=storage_options(path))
 
         if isinstance(path, dict):
             out_dict = {}
             for key, fpath in path.items():
-                if fpath.exists():
-                    if self._is_geodataframe():
-                        out_dict[key] = gpd.read_file(fpath)
-                    else:
-                        out_dict[key] = pd.read_csv(fpath)
+                if cloud_exists(fpath):
+                    with gdal_azure_session(path=fpath):
+                        if self._is_geodataframe():
+                            out_dict[key] = gpd.read_file(self._as_vsi(fpath))
+                        else:
+                            out_dict[key] = pd.read_csv(fpath, storage_options=storage_options(fpath))
                 else:
                     out_dict[key] = None
             return out_dict
@@ -88,34 +110,35 @@ class DataFrameIOManager(BaseManager):
         err = "Loading multiple files is not implemented for DataFrameIOManager."
         raise NotImplementedError(err)
 
-
 class RasterIOManager(BaseManager):
     def _get_raster_and_transform(self, fpath: Path) -> tuple[np.ndarray, Affine]:
-        with rio.open(fpath, "r") as ds:
-            data = ds.read(1)
-            transform = ds.transform
+        with gdal_azure_session(path=fpath):
+            with rio.open(self._as_vsi(fpath), "r") as ds:
+                data = ds.read(1)
+                transform = ds.transform
         return data, transform
 
     def handle_output(
         self, context: OutputContext, obj: tuple[np.ndarray, Affine]
     ) -> None:
         fpath = self._get_path(context)
-        fpath.parent.mkdir(exist_ok=True, parents=True)
+        self._makedirs(fpath)
 
         arr, transform = obj
-        with rio.open(
-            fpath,
-            "w",
-            driver="GTiff",
-            count=1,
-            height=arr.shape[0],
-            width=arr.shape[1],
-            dtype="uint16",
-            compress="w",
-            crs="ESRI:54009",
-            transform=transform,
-        ) as ds:
-            ds.write(arr, 1)
+        with gdal_azure_session(path=fpath, gdal_random_write=True):
+            with rio.open(
+                self._as_vsi(fpath),
+                "w",
+                driver="GTiff",
+                count=1,
+                height=arr.shape[0],
+                width=arr.shape[1],
+                dtype="uint16",
+                compress="DEFLATE",
+                crs="ESRI:54009",
+                transform=transform,
+            ) as ds:
+                ds.write(arr, 1)
 
     def load_input(self, context: InputContext) -> tuple[np.ndarray, Affine]:
         path = self._get_path(context)
@@ -131,50 +154,50 @@ class RasterIOManager(BaseManager):
 
         assert_never(type(path))
 
-
 class ReprojectedRasterIOManager(RasterIOManager):
     crs: str
 
     def _get_raster_and_transform(self, fpath: Path) -> tuple[np.ndarray, Affine]:
-        with rio.open(fpath) as ds:
-            transform, width, height = rio.warp.calculate_default_transform(
-                ds.crs,
-                self.crs,
-                ds.width,
-                ds.height,
-                *ds.bounds,
-            )
+        with gdal_azure_session(path=fpath):
+            with rio.open(self._as_vsi(fpath)) as ds:
+                transform, width, height = rio.warp.calculate_default_transform(
+                    ds.crs,
+                    self.crs,
+                    ds.width,
+                    ds.height,
+                    *ds.bounds,
+                )
 
-            data = np.zeros((height, width), dtype=int)
-            rio.warp.reproject(
-                ds.read(1),
-                data,
-                src_transform=ds.transform,
-                src_crs=ds.crs,
-                dst_transform=transform,
-                dst_crs=self.crs,
-                resampling=rio.warp.Resampling.nearest,
-            )
+                data = np.zeros((height, width), dtype=int)
+                rio.warp.reproject(
+                    ds.read(1),
+                    data,
+                    src_transform=ds.transform,
+                    src_crs=ds.crs,
+                    dst_transform=transform,
+                    dst_crs=self.crs,
+                    resampling=rio.warp.Resampling.nearest,
+                )
 
-        return data, transform
-
+            return data, transform
 
 class PresentationIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj: Presentation):
         fpath = self._get_path(context)
-        fpath.parent.mkdir(exist_ok=True, parents=True)
-        obj.save(fpath)
+        self._makedirs(fpath)
+        with fsspec.open(str(fpath), "wb", **storage_options(fpath)) as f:
+            obj.save(f)
 
     def load_input(self, context: InputContext):
         raise NotImplementedError
 
-
 class PlotFigIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj: Figure) -> None:
         fpath = self._get_path(context)
-        fpath.parent.mkdir(exist_ok=True, parents=True)
+        self._makedirs(fpath)
 
-        obj.savefig(fpath, dpi=250)
+        with fsspec.open(str(fpath), "wb", **storage_options(fpath)) as f:
+            obj.savefig(f, format=fpath.suffix.lstrip("."), dpi=250)
         obj.clf()
         plt.close(obj)
 
@@ -194,9 +217,9 @@ class PathIOManager(BaseManager):
 class TextIOManager(BaseManager):
     def handle_output(self, context: OutputContext, obj) -> None:
         fpath = self._get_path(context)
-        fpath.parent.mkdir(exist_ok=True, parents=True)
+        self._makedirs(fpath)
 
-        with open(fpath, "w", encoding="utf8") as f:
+        with fsspec.open(fpath, "w", encoding="utf8", **storage_options(fpath)) as f:
             obj = f"{obj:.10f}"
             f.write(obj)
 
@@ -206,15 +229,15 @@ class TextIOManager(BaseManager):
     ) -> float | dict[str, float | None]:
         fpath = self._get_path(context)
         if isinstance(fpath, os.PathLike):
-            with open(fpath, encoding="utf8") as f:
+            with fsspec.open(str(fpath),"r", encoding="utf8", **storage_options(fpath)) as f:
                 out = float(f.readline().strip("\n"))
         else:
             out = {}
             for key, subpath in fpath.items():
-                if subpath.exists():
-                    with open(subpath, encoding="utf8") as f:
+                try:
+                    with fsspec.open(str(subpath), "r", encoding="utf8", **storage_options(subpath)) as f:
                         out[key] = float(f.readline().strip("\n"))
-                else:
+                except FileNotFoundError:
                     out[key] = None
         return out
 

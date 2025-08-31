@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, Optional, Literal
+from typing import Dict, Optional, Literal, Tuple
 from datetime import datetime, timedelta, timezone
 
 from azure.identity import DefaultAzureCredential
@@ -15,6 +15,35 @@ storage_account_name: str = os.getenv("AZURE_STORAGE_ACCOUNT", "cfcetlsadls")
 _credential = None  # cache DefaultAzureCredential
 
 # ---------------- Helpers ----------------
+def parse_storage_from_path(path) -> Tuple[Literal["datalake", "local"], Optional[str]]:
+    """
+    Returns (storage_mode, container) based on the path.
+
+    Valid patterns:
+      - /vsiaz/<container>/...
+      - az://<container>/...
+      - az//:<container>/...   (lenient: accepts this variant)
+      - (anything else) -> local
+
+    Rules:
+      - If vsiaz/az scheme -> container is REQUIRED and mode='datalake'
+      - Else -> container=None and mode='local'
+    """
+    path = os.fspath(path)  # handles Path, str
+    if not isinstance(path, str) or not path:
+        raise ValueError("path must be a non-empty string")
+
+    prefixes = ("/vsiaz/", "az://")
+    matched_prefix = next((p for p in prefixes if path.startswith(p)), None)
+
+    if matched_prefix is None:
+        return "local", None
+
+    rest = path[len(matched_prefix):]
+    first = rest.split("/", 1)[0] if rest else ""
+    if not first:
+        raise ValueError(f"Container is required after '{matched_prefix}'.")
+    return "datalake", first
 
 def get_credential(**kwargs):
     """
@@ -34,13 +63,14 @@ def get_credential(**kwargs):
     _credential = DefaultAzureCredential(**kwargs)
     return _credential
 
-def storage_options(account_mode: str) -> Dict:
+def storage_options(path: str) -> Dict:
     """
     Dictionary for pandas/pyarrow/geopandas storage_options param.
-    If account_mode == "datalake", returns account_name + DefaultAzureCredential().
+    If storage_mode == "datalake", returns account_name + DefaultAzureCredential().
     Otherwise returns {} so local paths work unchanged.
     """
-    if account_mode == "datalake":
+    storage_mode, container = parse_storage_from_path(path)
+    if storage_mode == "datalake":
         return {
             "account_name": storage_account_name,
             "credential": get_credential(),
@@ -50,7 +80,7 @@ def storage_options(account_mode: str) -> Dict:
 def create_container_sas(
     container: str,
     *,
-    allow: Literal["read", "read_list", "read_write"] = "read_write",
+    allow: Literal["read", "read_list", "read_write","read_write_del"] = "read_write_del",
     account_name: Optional[str] = None,
     ttl_hours: int = 2,
     **credential_kwargs,
@@ -83,6 +113,8 @@ def create_container_sas(
         perms = ContainerSasPermissions(read=True, list=True)
     elif allow == "read_write":
         perms = ContainerSasPermissions(read=True, list=True, write=True, create=True)
+    elif allow == "read_write_del":
+        perms = ContainerSasPermissions(read=True, list=True, write=True, create=True, delete=True)
     else:
         raise ValueError(f"Unknown allow='{allow}'")
 
@@ -95,34 +127,6 @@ def create_container_sas(
         expiry=expiry,
     )
     return sas
-
-def make_path(
-    path: str,
-    account_mode: str,
-    *,
-    container: Optional[str] = None,
-) -> str:
-    """
-    Return a path suitable for pandas/adlfs & Rasterio.
-
-    - If account_mode != "datalake": return `path` unchanged (local mode).
-    - If account_mode == "datalake": ensure `az://<container>/<path>`.
-
-    Notes:
-    - Idempotent: if `path` already startswith "az://", it is returned as-is.
-    - `container` is required when account_mode == "datalake".
-    """
-    if account_mode != "datalake":
-        return path
-
-    if path.startswith("az://"):
-        return path
-
-    if not container:
-        raise ValueError("container is required when account_mode='datalake'")
-
-    clean = path.lstrip("/")
-    return f"az://{container}/{clean}"
 
 def rasterio_env_kwargs(
     account_mode: str,
@@ -162,7 +166,7 @@ def rasterio_env(
     account_name: Optional[str] = None,
     sas_token: Optional[str] = None,
     auto_sas: bool = True,
-    allow: Literal["read", "read_list", "read_write"] = "read",
+    allow: Literal["read", "read_list", "read_write"] = "read_write",
     ttl_hours: int = 4,
     debug: bool = False,
     gdal_fast: bool = True,
@@ -209,3 +213,99 @@ def rasterio_env(
         with Env(**env_kwargs):
             yield
     return _ctx()
+
+# --------------------------------
+def _gdal_env_vars_for_azure(
+    account_name: str,
+    sas_token: str,
+    *,
+    debug: bool = False,
+    gdal_fast: bool = True,
+    gdal_random_write: bool = True,
+) -> Dict[str, str]:
+    env = {
+        "AZURE_STORAGE_ACCOUNT": account_name,
+        "AZURE_STORAGE_SAS_TOKEN": sas_token,   # no leading '?'
+    }
+    if gdal_fast:
+        env["GDAL_DISABLE_READDIR_ON_OPEN"] = "YES"
+    if debug:
+        env["CPL_DEBUG"] = "ON"
+        env["CPL_CURL_VERBOSE"] = "TRUE"
+    if gdal_random_write:
+        env["CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE"] = "YES"
+    return env
+
+@contextmanager
+def gdal_azure_session(
+    *,
+    path: str,  # REQUIRED: we infer mode+container from this
+    account_name: Optional[str] = None,
+    sas_token: Optional[str] = None,
+    auto_sas: bool = True,
+    allow: Literal["read", "read_list", "read_write","read_write_del"] = "read_write_del",
+    ttl_hours: int = 4,
+    debug: bool = False,
+    gdal_fast: bool = True,
+    gdal_random_write: bool = False,
+    **credential_kwargs,
+):
+    """
+    A single context that makes **both** Rasterio and GeoPandas/Fiona/pyogrio
+    see Azure credentials, then cleans up.
+    """
+    from rasterio import Env  # lazy import
+
+    storage_mode, container = parse_storage_from_path(path)
+
+    if storage_mode == "local":
+        with Env():
+            yield
+        return
+    
+    # datalake branch
+    if not container:
+        raise ValueError("Container is required for datalake paths.")
+
+    acct = account_name or storage_account_name
+    if not acct:
+        raise ValueError("account_name is required (arg or AZURE_STORAGE_ACCOUNT).")
+
+    # Acquire SAS
+    if sas_token is None and auto_sas:
+        if not container:
+            raise ValueError("container is required to auto-mint a SAS.")
+        # You plug in your own issuer here
+        sas = create_container_sas(
+            container=container,
+            account_name=acct,
+            allow=allow,
+            ttl_hours=ttl_hours,
+            **credential_kwargs,
+        )
+    else:
+        sas = sas_token
+    if not sas:
+        raise ValueError("sas_token is required in datalake mode.")
+
+    # Build env vars for all GDAL consumers
+    new_env = _gdal_env_vars_for_azure(
+        account_name=acct,
+        sas_token=sas,
+        debug=debug,
+        gdal_fast=gdal_fast,
+        gdal_random_write=gdal_random_write
+    )
+
+    # Save/restore old env safely
+    old_env = {k: os.environ.get(k) for k in new_env}
+    try:
+        os.environ.update(new_env)                  # make visible to Fiona/pyogrio
+        with Env(**{k: v for k, v in new_env.items() if k.startswith("GDAL_") or k.startswith("CPL_")}):
+            yield
+    finally:
+        for k, v in old_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v

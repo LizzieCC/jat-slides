@@ -1,6 +1,6 @@
 from dagster import StaticPartitionsDefinition
 import json
-from pathlib import Path
+from upath import UPath as Path
 
 zone_partitions = StaticPartitionsDefinition(
     [

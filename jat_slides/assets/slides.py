@@ -1,5 +1,6 @@
 import datetime
-from pathlib import Path
+from upath import UPath as Path
+
 
 import numpy as np
 import pandas as pd
@@ -19,9 +20,22 @@ from dagster import AssetIn, asset
 from jat_slides.partitions import zone_partitions
 from jat_slides.resources import ConfigResource
 
+from io import BytesIO
+import fsspec
+from utils.utils_adls import storage_options
+from utils.cloud_paths import cloud_exists
+
 RGB_BLUE = RGBColor(0x00, 0x70, 0xC0)
 RGB_RED = RGBColor(0xFF, 0x00, 0x00)
 
+def insert_picture_any(figure_shape, picture_path):
+    # local file → use path
+    if getattr(picture_path, "protocol", "file") == "file":
+        return figure_shape.insert_picture(str(picture_path))
+    # az:// → stream bytes via fsspec
+    with fsspec.open(str(picture_path), "rb", **storage_options(picture_path)) as f:
+        buf = BytesIO(f.read())
+    return figure_shape.insert_picture(buf)
 
 def find_layouts(pres) -> dict:
     layouts = {}
@@ -142,7 +156,7 @@ def add_picture_with_highlight_slide(
     )
 
     figure_shape = find_shape(pop_slide.shapes, prefix="Picture")
-    figure_shape.insert_picture(str(picture_path))
+    insert_picture_any(figure_shape, picture_path)
 
 
 # pylint: disable=protected-access
@@ -239,9 +253,9 @@ def add_built_slide(
                 run.font.bold = True
                 run.font.color.rgb = RGB_BLUE
 
-    if picture_path.exists():
+    if cloud_exists(picture_path):
         figure_shape = find_shape(built_slide.shapes, prefix="Picture")
-        figure_shape.insert_picture(str(picture_path))
+        insert_picture_any(figure_shape, picture_path)
 
 
 def add_single_picture_slide(
@@ -257,9 +271,9 @@ def add_single_picture_slide(
     title_shape = find_shape(slide.shapes, prefix="Text")
     add_normal_text_to_shape(title_shape, title)
 
-    if picture_path.exists():
+    if cloud_exists(picture_path):
         figure_shape = find_shape(slide.shapes, prefix="Picture")
-        figure_shape.insert_picture(str(picture_path))
+        insert_picture_any(figure_shape, picture_path)
 
 
 def generate_single_slide(

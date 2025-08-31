@@ -1,4 +1,4 @@
-from pathlib import Path
+from upath import UPath as Path
 
 import geopandas as gpd
 import pandas as pd
@@ -7,16 +7,17 @@ import dagster as dg
 from jat_slides.partitions import zone_partitions
 from jat_slides.resources import PathResource
 
+from utils.utils_adls import gdal_azure_session, storage_options
 
 @dg.asset(name="geo", key_prefix="jobs", io_manager_key="gpkg_manager")
 def jobs_geo(path_resource: PathResource) -> gpd.GeoDataFrame:
     jobs_path = Path(path_resource.jobs_path) / "denue_2023_estimaciones.csv"
-
     return gpd.GeoDataFrame(
         (
             pd.read_csv(
                 jobs_path,
                 usecols=["num_empleos_esperados", "longitud", "latitud"],
+                storage_options=storage_options(jobs_path)
             )
             .assign(geometry=lambda x: gpd.points_from_xy(x["longitud"], x["latitud"]))
             .drop(columns=["longitud", "latitud"])
@@ -70,7 +71,9 @@ def jobs_reprojected(
         / "2020"
         / f"{context.partition_key}.gpkg"
     )
-    df_mesh = gpd.read_file(mesh_path).drop(columns=["pop_fraction"])
+
+    with gdal_azure_session(path=mesh_path):
+        df_mesh = gpd.read_file(mesh_path).drop(columns=["pop_fraction"])
     joined = df_mesh.sjoin(jobs, how="inner", predicate="contains").drop(
         columns=["index_right"],
     )

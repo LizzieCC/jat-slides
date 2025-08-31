@@ -1,10 +1,13 @@
 import os
-from pathlib import Path
+from upath import UPath as Path
+
 import geopandas as gpd
 import json
+from utils_adls import gdal_azure_session
 
 mun_2020_path = Path(os.getenv("POPULATION_GRIDS_PATH")) / "framework/mun/2020.gpkg"
-df_mun = gpd.read_file(mun_2020_path)
+with gdal_azure_session(path=mun_2020_path):
+    df_mun = gpd.read_file(mun_2020_path)
 #mun_list = df_mun["CVEGEO"].sort_values().astype(str).to_numpy().tolist()
 #print(mun_list)
 
