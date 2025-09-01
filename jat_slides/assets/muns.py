@@ -1,4 +1,5 @@
-from pathlib import Path
+from upath import UPath as Path
+
 
 import geopandas as gpd
 import pandas as pd
@@ -7,6 +8,7 @@ import dagster as dg
 from jat_slides.partitions import mun_partitions
 from jat_slides.resources import PathResource
 
+from utils.utils_adls import gdal_azure_session
 
 def muns_factory(year: int) -> dg.AssetsDefinition:
     @dg.asset(
@@ -28,11 +30,12 @@ def muns_factory(year: int) -> dg.AssetsDefinition:
         agebs_dir_path = (
             Path(path_resource.pg_path) / "zone_agebs" / "shaped" / str(year)
         )
-
-        df = [
-            gpd.read_file(path).to_crs("ESRI:54009")
-            for path in agebs_dir_path.glob(f"{ent}.*.gpkg")
-        ]
+        
+        with gdal_azure_session(path=agebs_dir_path):
+            df = [
+                gpd.read_file(path).to_crs("ESRI:54009")
+                for path in agebs_dir_path.glob(f"{ent}.*.gpkg")
+            ]
         df = pd.concat(df)
         df["geometry"] = df["geometry"].make_valid()
 

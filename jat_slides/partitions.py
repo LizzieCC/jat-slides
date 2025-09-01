@@ -1,9 +1,6 @@
-import os
-from pathlib import Path
-
-import geopandas as gpd
-
 from dagster import StaticPartitionsDefinition
+import json
+from upath import UPath as Path
 
 zone_partitions = StaticPartitionsDefinition(
     [
@@ -78,9 +75,8 @@ zone_partitions = StaticPartitionsDefinition(
         "32.1.01",
     ],
 )
+json_path = Path(__file__).resolve().parents[1] / "utils" / "mun_2020.json"
+with json_path.open("r", encoding="utf-8") as f:
+    mun_data = json.load(f)
+mun_partitions = StaticPartitionsDefinition(mun_data["CVEGEO"])
 
-
-mun_2020_path = Path(os.getenv("POPULATION_GRIDS_PATH")) / "framework/mun/2020.gpkg"
-df_mun = gpd.read_file(mun_2020_path)
-mun_list = df_mun["CVEGEO"].sort_values().astype(str).to_numpy().tolist()
-mun_partitions = StaticPartitionsDefinition(mun_list)

@@ -1,5 +1,5 @@
 import os
-from pathlib import Path
+from upath import UPath as Path
 from typing import Literal
 
 import contextily as cx
@@ -16,8 +16,11 @@ from shapely.plotting import plot_line
 
 import dagster as dg
 from jat_slides.resources import (
-    ConfigResource,
+    ConfigResource
 )
+
+from utils.utils_adls import gdal_azure_session, storage_options
+from utils.cloud_paths import cloud_exists
 
 cmap_rdbu = mcol.LinearSegmentedColormap.from_list(
     "RdBu2",
@@ -102,7 +105,8 @@ def add_polygon_bounds(
     poly_kwargs = process_default_args(default_poly_kwargs, poly_kwargs)
     text_kwargs = process_default_args(default_text_kwargs, text_kwargs)
 
-    df_mun = gpd.read_file(path).to_crs("EPSG:4326").set_index("CVEGEO")
+    with gdal_azure_session(path=path):
+        df_mun = gpd.read_file(path).to_crs("EPSG:4326").set_index("CVEGEO")
     bbox = shapely.box(xmin, ymin, xmax, ymax)
     df_mun = df_mun[df_mun.intersects(bbox)]
 
@@ -131,7 +135,7 @@ def add_polygon_bounds(
             raise ValueError(err)
 
         df_name = (
-            pd.read_csv(census_path, usecols=usecols)
+            pd.read_csv(census_path, usecols=usecols,storage_options=storage_options(census_path))
             .assign(CVEGEO="")
             .rename(columns={name_col: "name"})
         )
@@ -218,12 +222,8 @@ def generate_figure(
 
     if add_mun_bounds:
         add_polygon_bounds(
-            Path(
-                "C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/final/framework/mun/2020.gpkg"
-            ),
-            Path(
-                f"C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"
-            ),
+            (Path(os.environ["POPULATION_GRIDS_PATH"]) / "final/framework/mun/2020.gpkg"),
+            (Path(os.environ["POPULATION_GRIDS_PATH"])/ "initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"),
             xmin=xmin,
             ymin=ymin,
             xmax=xmax,
@@ -237,12 +237,8 @@ def generate_figure(
 
     if add_state_bounds:
         add_polygon_bounds(
-            Path(
-                "C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/final/framework/state/2020.gpkg"
-            ),
-            Path(
-                f"C:/Users/lain/OneDrive - Instituto Tecnologico y de Estudios Superiores de Monterrey/population_grids_data/initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"
-            ),
+            (Path(os.environ["POPULATION_GRIDS_PATH"]) / "final/framework/state/2020.gpkg"),
+            (Path(os.environ["POPULATION_GRIDS_PATH"]) / "initial/census/INEGI/2020/conjunto_de_datos_ageb_urbana_{str(state).zfill(2)}_cpv2020.csv"),
             xmin=xmin,
             ymin=ymin,
             xmax=xmax,
@@ -370,8 +366,9 @@ def intersect_geometries(
 
 
 def add_overlay(fpath: Path, ax: Axes) -> None:
-    if fpath.exists():
-        geom = gpd.read_file(fpath).to_crs("EPSG:4326")["geometry"].item()
+    if cloud_exists(fpath):
+        with gdal_azure_session(path=fpath):
+            geom = gpd.read_file(fpath).to_crs("EPSG:4326")["geometry"].item()
         plot_line(geom, ax=ax, linewidth=3, color="k", add_points=False)
 
 

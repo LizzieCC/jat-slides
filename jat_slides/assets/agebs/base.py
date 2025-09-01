@@ -1,11 +1,12 @@
-from pathlib import Path
+from upath import UPath as Path
+
 
 import geopandas as gpd
 
 import dagster as dg
 from jat_slides.partitions import zone_partitions
 from jat_slides.resources import PathResource
-
+from utils.utils_adls import gdal_azure_session
 
 def agebs_factory(year: int) -> dg.AssetsDefinition:
     infix = "shaped"
@@ -25,7 +26,9 @@ def agebs_factory(year: int) -> dg.AssetsDefinition:
         agebs_path = (
             Path(path_resource.pg_path) / f"zone_agebs/{infix}/{year}/{zone}.gpkg"
         )
-        df = gpd.read_file(agebs_path).to_crs("ESRI:54009")
+        print(f"[DEBUG agebs__{year}] Using agebs_path={agebs_path}")
+        with gdal_azure_session(path=agebs_path):
+            df = gpd.read_file(agebs_path).to_crs("ESRI:54009")
         df["geometry"] = df["geometry"].make_valid()
         return df
 

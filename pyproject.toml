@@ -14,11 +14,13 @@ matplotlib = "^3.9.2"
 contextily = "^1.6.2"
 dagster = "^1.9.1"
 dagster-webserver = "^1.9.1"
+dagster-postgres="0.27.6"
 babel = "^2.16.0"
 toml = "^0.10.2"
 mapclassify = "^2.8.1"
 jenkspy = "^0.4.1"
 pandas-stubs = "^2.2.3.250527"
+adlfs = "^2024.12.0"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.0.1"
