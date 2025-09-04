@@ -13,14 +13,18 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 from shapely.plotting import plot_line
+from shapely.ops import transform
+from pyproj import Transformer
 
 import dagster as dg
 from jat_slides.resources import (
     ConfigResource
 )
 
-from utils.utils_adls import gdal_azure_session, storage_options
+from cfc_core_utils import gdal_azure_session, storage_options
 from utils.cloud_paths import cloud_exists
+
+from time import perf_counter as now #remove
 
 cmap_rdbu = mcol.LinearSegmentedColormap.from_list(
     "RdBu2",
@@ -102,13 +106,30 @@ def add_polygon_bounds(
         "weight": "bold",
     }
 
+    log = dg.get_dagster_logger()
+    t0 = now()
+
     poly_kwargs = process_default_args(default_poly_kwargs, poly_kwargs)
     text_kwargs = process_default_args(default_text_kwargs, text_kwargs)
 
+    bbox = shapely.box(xmin, ymin, xmax, ymax) # in 4326
+
+    # # transform to EPSG:6372
+    t = Transformer.from_crs(4326, 6372, always_xy=True).transform
+    bbox_6372 = transform(t, bbox).bounds  # (minx, miny, maxx, maxy)
+
     with gdal_azure_session(path=path):
-        df_mun = gpd.read_file(path).to_crs("EPSG:4326").set_index("CVEGEO")
-    bbox = shapely.box(xmin, ymin, xmax, ymax)
+        df_mun = gpd.read_file(path, bbox=bbox_6372, engine="pyogrio")
+
+        t1 = now(); log.info(f"[add_polygon_bounds] read = {t1-t0:.2f}s")
+
+        df_mun = df_mun.to_crs("EPSG:4326").set_index("CVEGEO")
+
+        t2 = now(); log.info(f"[add_polygon_bounds] to_crs = {t2-t1:.2f}s")
+
+    
     df_mun = df_mun[df_mun.intersects(bbox)]
+    t3 = now(); log.info(f"[add_polygon_bounds] clip = {t3-t2:.2f}s")
 
     if not isinstance(df_mun, gpd.GeoDataFrame):
         err = "df_mun must be a GeoDataFrame"
@@ -118,7 +139,7 @@ def add_polygon_bounds(
         ax=ax,
         **poly_kwargs,
     )
-
+    t4 = now(); log.info(f"[add_polygon_bounds] draw = {t4-t3:.2f}s")
     if add_labels:
         if label_level is None:
             err = "label_level must be 'state' or 'mun' if add_labels is True"
@@ -133,13 +154,13 @@ def add_polygon_bounds(
         else:
             err = f"label_level must be 'state' or 'mun', got {label_level}"
             raise ValueError(err)
-
+        t_labels0 = now()
         df_name = (
             pd.read_csv(census_path, usecols=usecols,storage_options=storage_options(census_path))
             .assign(CVEGEO="")
             .rename(columns={name_col: "name"})
         )
-
+        t_labels1 = now(); log.info(f"[add_polygon_bounds] labels: read_csv = {t_labels1-t_labels0:.2f}s")
         if "ENTIDAD" in usecols:
             df_name = df_name.assign(
                 CVEGEO=lambda df: df["CVEGEO"] + df["ENTIDAD"].astype(str).str.zfill(2)
@@ -148,7 +169,7 @@ def add_polygon_bounds(
             df_name = df_name.assign(
                 CVEGEO=lambda df: df["CVEGEO"] + df["MUN"].astype(str).str.zfill(3)
             )
-
+        t_labels2 = now(); log.info(f"[add_polygon_bounds] labels: build keys = {t_labels2-t_labels1:.2f}s")
         df_name = (
             df_name.drop(columns=["ENTIDAD", "MUN"], errors="ignore")
             .drop_duplicates(subset=["CVEGEO"])
@@ -171,7 +192,7 @@ def add_polygon_bounds(
         df_mun_trimmed["name"] = df_mun_trimmed["name"].replace(
             {"México": "Estado de México"}
         )
-
+        t_labels3 = now(); log.info(f"[add_polygon_bounds] labels: join+centroids = {t_labels3-t_labels2:.2f}s")
         for _, row in df_mun_trimmed.iterrows():
             text = row["name"]
             if not isinstance(text, str):
@@ -189,6 +210,8 @@ def add_polygon_bounds(
                 horizontalalignment="center",
                 **text_kwargs,
             )
+        t_labels4 = now(); log.info(f"[add_polygon_bounds] labels: annotate loop = {t_labels4-t_labels3:.2f}s")
+        log.info(f"[add_polygon_bounds] labels: TOTAL = {t_labels4-t_labels0:.2f}s")
 
 
 def generate_figure(
@@ -207,11 +230,14 @@ def generate_figure(
     mun_text_kwargs: dict | None = None,
     state: int | None = None,
 ) -> tuple[Figure, Axes]:
+    log = dg.get_dagster_logger()
+    g0 = now()
     fig, ax = plt.subplots(figsize=(8, 4.5))
     ax.axis("off")
 
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
+    g1 = now(); log.info(f"[generate_figure] fig/axes = {g1-g0:.2f}s")
 
     fig.subplots_adjust(bottom=0)
     fig.subplots_adjust(top=1)
@@ -219,6 +245,7 @@ def generate_figure(
     fig.subplots_adjust(left=0)
 
     cx.add_basemap(ax, source=cx.providers.CartoDB.PositronNoLabels, crs="EPSG:4326")
+    g2 = now(); log.info(f"[generate_figure] B(add_basemap) = {g2-g1:.2f}s")
 
     if add_mun_bounds:
         add_polygon_bounds(
@@ -234,6 +261,9 @@ def generate_figure(
             text_kwargs=mun_text_kwargs,
             label_level="mun",
         )
+        g3 = now(); log.info(f"[generate_figure] C(mun_bounds) = {g3-g2:.2f}s")
+    else:
+        g3=g2
 
     if add_state_bounds:
         add_polygon_bounds(
@@ -249,7 +279,10 @@ def generate_figure(
             text_kwargs=state_text_kwargs,
             label_level="state",
         )
-
+        g4 = now(); log.info(f"[generate_figure] D(state_bounds) = {g4-g3:.2f}s")
+    else:
+        g4 = g3
+    log.info(f"[generate_figure] TOTAL = {g4-g0:.2f}s")
     return fig, ax
 
 

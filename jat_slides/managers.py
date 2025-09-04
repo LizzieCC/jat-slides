@@ -21,7 +21,7 @@ from dagster import (
     ResourceDependency,
 )
 from jat_slides.resources import PathResource, path_resource
-from utils.utils_adls import gdal_azure_session, storage_options
+from cfc_core_utils import gdal_azure_session, storage_options
 
 import shutil
 import tempfile
@@ -129,14 +129,16 @@ class RasterIOManager(BaseManager):
             with rio.open(
                 self._as_vsi(fpath),
                 "w",
-                driver="GTiff",
+                driver="COG",
                 count=1,
                 height=arr.shape[0],
                 width=arr.shape[1],
                 dtype="uint16",
-                compress="DEFLATE",
+                compress="ZSTD",
                 crs="ESRI:54009",
                 transform=transform,
+                BIGTIFF="IF_SAFER",
+                BLOCKSIZE=512,             # square internal tiles
             ) as ds:
                 ds.write(arr, 1)
 
@@ -241,6 +243,29 @@ class TextIOManager(BaseManager):
                     out[key] = None
         return out
 
+class GeoParquetIOManager(BaseManager):
+    """
+    Stores GeoDataFrames as GeoParquet (.parquet) using GeoPandas/pandas.
+    Works for local paths and ADLS (az://...) via storage_options().
+    """
+
+    def handle_output(self, context: dg.OutputContext, obj: gpd.GeoDataFrame) -> None:
+        fpath = self._get_path(context).with_suffix(".parquet")
+        self._makedirs(fpath)
+         # write via fsspec file handle for az://
+        with fsspec.open(str(fpath), "wb", **storage_options(fpath)) as fo:
+            obj.to_parquet(
+                fo,
+                index=False,
+                compression="zstd",
+            )
+
+    def load_input(self, context: dg.InputContext) -> gpd.GeoDataFrame:
+        fpath = self._get_path(context).with_suffix(".parquet")
+        return gpd.read_parquet(
+            str(fpath),
+            storage_options=storage_options(fpath),
+        ) 
 
 # Init
 
@@ -260,7 +285,7 @@ presentation_manger = PresentationIOManager(
 plot_manager = PlotFigIOManager(path_resource=path_resource, extension=".jpg")
 path_manager = PathIOManager(path_resource=path_resource, extension=".jpg")
 text_manager = TextIOManager(path_resource=path_resource, extension=".txt")
-
+geoparquet_manager = GeoParquetIOManager(path_resource=path_resource, extension=".parquet")
 
 defs = dg.Definitions(
     resources={
@@ -273,5 +298,6 @@ defs = dg.Definitions(
         "plot_manager": plot_manager,
         "path_manager": path_manager,
         "text_manager": text_manager,
+        "geoparquet_manager": geoparquet_manager,
     },
 )
