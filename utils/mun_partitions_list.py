@@ -3,7 +3,7 @@ from upath import UPath as Path
 
 import geopandas as gpd
 import json
-from utils_adls import gdal_azure_session
+from cfc_core_utils import gdal_azure_session
 
 mun_2020_path = Path(os.getenv("POPULATION_GRIDS_PATH")) / "framework/mun/2020.gpkg"
 with gdal_azure_session(path=mun_2020_path):

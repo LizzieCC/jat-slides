@@ -7,7 +7,7 @@ import dagster as dg
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
 
-from utils.utils_adls import gdal_azure_session
+from cfc_core_utils import gdal_azure_session
 @dg.asset(
     name="base",
     key_prefix="cells",

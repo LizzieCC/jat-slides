@@ -10,7 +10,7 @@ from affine import Affine
 import dagster as dg
 from jat_slides.partitions import mun_partitions, zone_partitions
 from jat_slides.resources import PathResource
-from utils.utils_adls import gdal_azure_session
+from cfc_core_utils import gdal_azure_session
 
 YEARS = range(1975, 2021, 5)
 
@@ -21,7 +21,7 @@ def load_built_rasters_factory(year: int) -> dg.OpDefinition:
         out={"data": dg.Out(), "transform": dg.Out()},
     )
     def _op(path_resource: PathResource, bounds: list) -> tuple[np.ndarray, Affine]:
-        fpath = Path(path_resource.ghsl_path) / f"built_100" / f"{year}.tif"
+        fpath = Path(path_resource.ghsl_path) / f"built_100_cog" / f"{year}.tif"
         
         with gdal_azure_session(path=fpath):
             vsi_path = str(fpath).replace("az://", "/vsiaz/")

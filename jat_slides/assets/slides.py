@@ -22,7 +22,7 @@ from jat_slides.resources import ConfigResource
 
 from io import BytesIO
 import fsspec
-from utils.utils_adls import storage_options
+from cfc_core_utils import storage_options
 from utils.cloud_paths import cloud_exists
 
 RGB_BLUE = RGBColor(0x00, 0x70, 0xC0)

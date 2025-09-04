@@ -1,6 +1,6 @@
 from upath import UPath as Path
 import fsspec
-from .utils_adls import storage_options
+from cfc_core_utils import storage_options
 
 def cloud_exists(p: Path) -> bool:
     if getattr(p, "protocol", "file") == "file":

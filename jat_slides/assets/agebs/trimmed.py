@@ -6,7 +6,7 @@ import dagster as dg
 from jat_slides.partitions import zone_partitions
 from jat_slides.resources import PathResource
 
-from utils.utils_adls import gdal_azure_session
+from cfc_core_utils import gdal_azure_session
 
 def agebs_trimmed_factory(year: int) -> dg.AssetsDefinition:
     @dg.asset(
